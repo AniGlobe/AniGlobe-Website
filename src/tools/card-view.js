@@ -146,7 +146,13 @@ export function renderCard(profile) {
         )
       : null,
     profile.source === 'MyAnimeList' && !profile.favoritesAvailable
-      ? el('p', { class: 'tc-footer-note' }, 'Favorites are not available for this public profile.')
+      ? el(
+          'p',
+          { class: 'tc-footer-note' },
+          profile.favoritesError
+            ? 'MyAnimeList favorites could not be loaded: ' + profile.favoritesError
+            : 'Favorites are not available for this public profile.'
+        )
       : null,
     signature
       ? section(
@@ -196,7 +202,11 @@ export function summaryText(profile) {
         profile.favourites.slice(0, 5).map((entry) => entry.title).join(', ')
     );
   } else if (profile.source === 'MyAnimeList' && !profile.favoritesAvailable) {
-    lines.push('MyAnimeList favorites are not available for this public profile.');
+    lines.push(
+      profile.favoritesError
+        ? 'MyAnimeList favorites could not be loaded: ' + profile.favoritesError
+        : 'MyAnimeList favorites are not available for this public profile.'
+    );
   }
 
   const standout = signatureTitle(profile);

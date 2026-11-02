@@ -34,6 +34,12 @@ required.
 A future catalog viewer can request the next Jikan page only when someone
 browses to it, rather than downloading a local copy of the catalog.
 
+Anime Wrapped requests profile and favorites data from Jikan at a rate-safe
+interval and gives up after 10 seconds if a request stalls. If favorites are
+unavailable, the profile summary still loads and shows the reason. AniList
+Wrapped requests profile statistics, favorites, and only the first ten
+completed titles, rather than downloading the entire list.
+
 ## Project layout
 
 ```text

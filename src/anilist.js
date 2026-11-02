@@ -26,32 +26,38 @@ export class AniListError extends Error {
 
 /** Low-level POST. Throws AniListError on transport, HTTP or GraphQL errors. */
 async function gql(query) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
   let response;
+  let payload;
   try {
     response = await fetch(runtime.anilistEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ query }),
+      signal: controller.signal,
     });
-  } catch {
+    payload = await response.json();
+  } catch (error) {
+    if (controller.signal.aborted || (error && error.name === 'AbortError')) {
+      throw new AniListError('AniList did not respond within 10 seconds. Try again.', 'timeout');
+    }
+    if (response) {
+      throw new AniListError('AniList sent a response we could not read.', 'parse');
+    }
     throw new AniListError(
       'Could not reach AniList. Check your connection and try again.',
       'network'
     );
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (response.status === 429) {
     throw new AniListError('AniList is rate-limiting us. Wait a minute and retry.', 'rate_limited');
   }
 
-  if (!response.ok) {
-    throw new AniListError('AniList returned HTTP ' + response.status + '.', 'http');
-  }
-
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
+  if (!payload || typeof payload !== 'object') {
     throw new AniListError('AniList sent a response we could not read.', 'parse');
   }
 
@@ -60,6 +66,10 @@ async function gql(query) {
       (payload.errors[0] && payload.errors[0].message) || 'AniList rejected the query.',
       'graphql'
     );
+  }
+
+  if (!response.ok) {
+    throw new AniListError('AniList returned HTTP ' + response.status + '.', 'http');
   }
 
   return payload.data;
@@ -72,12 +82,10 @@ async function gql(query) {
 /**
  * One round trip, everything the card needs.
  *
- * `statistics.anime` gives aggregates (count, minutes watched, mean score)
- * plus per-genre/tag breakdowns; `favourites` gives the user's top titles;
- * `mediaListCollection` gives scored entries for the taste signals.
+ * `statistics.anime` gives aggregates and breakdowns; `favourites` gives the
+ * user's favorites; a paginated list query gets only the top completed titles.
  *
- * The username is substituted into NAME_PLACEHOLDER rather than passed as a
- * GraphQL variable, which keeps the request body free of dollar signs.
+ * The validated username is substituted into the query template.
  */
 const NAME_PLACEHOLDER = '%ANILIST_USERNAME%';
 
@@ -102,17 +110,15 @@ const PROFILE_QUERY = `
         }
       }
       favourites {
-        anime(limit: 10) {
+        anime(page: 1) {
           nodes { id title { romaji english } averageScore genres }
         }
       }
-      mediaListCollection(type: ANIME, status: COMPLETED, sort: SCORE_DESC) {
-        lists {
-          entries {
-            score(format: POINT_10)
-            media { id title { romaji english } averageScore genres }
-          }
-        }
+    }
+    Page(page: 1, perPage: 10) {
+      mediaList(userName: "%ANILIST_USERNAME%", type: ANIME, status: COMPLETED, sort: SCORE_DESC) {
+        score(format: POINT_10)
+        media { id title { romaji english } averageScore genres }
       }
     }
   }
@@ -139,7 +145,7 @@ export async function fetchProfile(username) {
     );
   }
 
-  const data = await gql(PROFILE_QUERY.replace(NAME_PLACEHOLDER, name));
+  const data = await gql(PROFILE_QUERY.replace(/%ANILIST_USERNAME%/g, name));
   const user = data && data.User;
 
   if (!user) {
@@ -149,7 +155,10 @@ export async function fetchProfile(username) {
     );
   }
 
-  return normaliseProfile(user);
+  const entries = data.Page && Array.isArray(data.Page.mediaList)
+    ? data.Page.mediaList
+    : [];
+  return normaliseProfile(user, entries);
 }
 
 /**
@@ -166,10 +175,8 @@ function isSafeUsername(name) {
  * Flatten AniList's shape into something the card renders without conditionals.
  * Missing data degrades to empty arrays and zeros instead of throwing.
  */
-function normaliseProfile(user) {
+function normaliseProfile(user, completed) {
   const stats = (user.statistics && user.statistics.anime) || {};
-  const lists = (user.mediaListCollection && user.mediaListCollection.lists) || [];
-  const completed = (lists[0] && lists[0].entries) || [];
   const favouriteNodes =
     (user.favourites && user.favourites.anime && user.favourites.anime.nodes) || [];
 

@@ -5,6 +5,7 @@
 import { runtime } from '../config.js';
 
 const MIN_REQUEST_GAP = 400;
+const REQUEST_TIMEOUT_MS = 10000;
 let requestQueue = Promise.resolve();
 let lastRequestAt = 0;
 
@@ -24,42 +25,11 @@ function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function request(path) {
+function scheduleRequestStart() {
   const task = requestQueue.then(async () => {
     const remaining = MIN_REQUEST_GAP - (Date.now() - lastRequestAt);
     if (remaining > 0) await delay(remaining);
     lastRequestAt = Date.now();
-
-    let response;
-    try {
-      response = await fetch(runtime.jikanEndpoint + path, {
-        headers: { Accept: 'application/json' },
-      });
-    } catch {
-      throw new MalError('Could not reach Jikan. Check your connection and try again.', 'network');
-    }
-
-    if (response.status === 404) {
-      throw new MalError('That MyAnimeList profile or resource was not found.', 'not_found');
-    }
-    if (response.status === 429) {
-      throw new MalError('Jikan is rate-limiting requests. Wait a minute and try again.', 'rate_limited');
-    }
-    if (!response.ok) {
-      throw new MalError('Jikan returned HTTP ' + response.status + '.', 'http');
-    }
-
-    let payload;
-    try {
-      payload = await response.json();
-    } catch {
-      throw new MalError('Jikan returned data we could not read.', 'parse');
-    }
-
-    if (payload && payload.error) {
-      throw new MalError(String(payload.error), 'api');
-    }
-    return payload;
   });
 
   requestQueue = task.then(
@@ -67,6 +37,54 @@ function request(path) {
     () => undefined
   );
   return task;
+}
+
+async function request(path) {
+  await scheduleRequestStart();
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response;
+  let payload;
+  try {
+    try {
+      response = await fetch(runtime.jikanEndpoint + path, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+
+      if (response.status === 404) {
+        throw new MalError('That MyAnimeList profile or resource was not found.', 'not_found');
+      }
+      if (response.status === 429) {
+        throw new MalError('Jikan is rate-limiting requests. Wait a minute and try again.', 'rate_limited');
+      }
+      if (response.status === 503) {
+        throw new MalError('Jikan is temporarily unavailable. Try again shortly.', 'unavailable');
+      }
+      if (!response.ok) {
+        throw new MalError('Jikan returned HTTP ' + response.status + '.', 'http');
+      }
+
+      payload = await response.json();
+    } catch (error) {
+      if (error instanceof MalError) throw error;
+      if (controller.signal.aborted || (error && error.name === 'AbortError')) {
+        throw new MalError('Jikan did not respond within 10 seconds. Try again.', 'timeout');
+      }
+      if (response) {
+        throw new MalError('Jikan returned data we could not read.', 'parse');
+      }
+      throw new MalError('Could not reach Jikan. Check your connection and try again.', 'network');
+    }
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (payload && payload.error) {
+    throw new MalError(String(payload.error), 'api');
+  }
+  return payload;
 }
 
 function titleOf(anime) {
@@ -87,7 +105,13 @@ export async function fetchProfile(username) {
   }
 
   const encodedName = encodeURIComponent(name);
-  const profileResponse = await request('/users/' + encodedName + '/full');
+  const [profileResponse, favoritesResult] = await Promise.all([
+    request('/users/' + encodedName + '/full'),
+    request('/users/' + encodedName + '/favorites').then(
+      (response) => ({ response }),
+      (error) => ({ error })
+    ),
+  ]);
   const user = profileResponse && profileResponse.data;
   if (!user || !user.username) {
     throw new MalError('MyAnimeList returned an incomplete user profile.', 'parse');
@@ -96,9 +120,16 @@ export async function fetchProfile(username) {
   const stats = user.statistics && user.statistics.anime ? user.statistics.anime : {};
   let favorites = [];
   let favoritesAvailable = true;
-  try {
-    const response = await request('/users/' + encodedName + '/favorites');
-    const anime = response && response.data && response.data.anime;
+  let favoritesError = null;
+  if (favoritesResult.error) {
+    favoritesAvailable = false;
+    if (!(favoritesResult.error instanceof MalError && favoritesResult.error.code === 'not_found')) {
+      favoritesError = favoritesResult.error.message;
+    }
+  } else {
+    const anime = favoritesResult.response &&
+      favoritesResult.response.data &&
+      favoritesResult.response.data.anime;
     favorites = Array.isArray(anime)
       ? anime.map((entry) => ({
           id: entry.mal_id,
@@ -107,12 +138,6 @@ export async function fetchProfile(username) {
           genres: [],
         }))
       : [];
-  } catch (error) {
-    if (error instanceof MalError && error.code === 'not_found') {
-      favoritesAvailable = false;
-    } else {
-      throw error;
-    }
   }
 
   const daysWatched = Number(stats.days_watched);
@@ -143,6 +168,7 @@ export async function fetchProfile(username) {
     distribution: [],
     favourites: favorites,
     favoritesAvailable,
+    favoritesError,
     scored: [],
     isSparse: !(Number(stats.total_entries) > 0),
   };
