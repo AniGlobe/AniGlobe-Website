@@ -1,23 +1,17 @@
 /**
- * Daily anime guesser.
+ * Daily anime and manga guessing games.
  *
  * Five clues, revealed one at a time. Wrong guesses cost points, and the same
  * puzzle is selected from one MyAnimeList page on demand and cached for the day.
  */
 
-import { el, render, store, copyText, dateKey, dayIndex, setStatus } from '../lib.js';
+import { el, render, store, copyText, dateKey, dayIndex, hashString, setStatus } from '../lib.js';
 import { fetchDailyPuzzle } from '../providers/mal.js';
 import { site } from '../config.js';
+import { resolveMediaType } from '../domain/media.js';
 
 const STYLE_ID = 'tool-daily-styles';
-const KEY_LAST_DATE = 'daily:last-date';
-const KEY_LAST_INDEX = 'daily:last-index';
-const KEY_STREAK = 'daily:streak';
-const KEY_RESULT = 'daily:result';
-const KEY_PUZZLE = 'daily:puzzle:v2';
-
-const CLUE_LABELS = ['Year', 'Studio', 'Format', 'Genres', 'Hook'];
-const MAX_CLUES = CLUE_LABELS.length;
+const MAX_CLUES = 5;
 const START_SCORE = 500;
 const PENALTY = 60;
 const FLOOR = 50;
@@ -49,34 +43,30 @@ function matches(puzzle, guess) {
   return Boolean(target) && puzzle.answers.some((answer) => normalise(answer) === target);
 }
 
-function isValidPuzzle(puzzle) {
+function isValidPuzzle(puzzle, mediaType) {
   return Boolean(
     puzzle &&
+      puzzle.mediaType === mediaType &&
       Array.isArray(puzzle.answers) &&
       puzzle.answers.some((answer) => typeof answer === 'string' && answer.trim()) &&
-      Number.isInteger(puzzle.year) &&
-      typeof puzzle.studio === 'string' &&
-      typeof puzzle.format === 'string' &&
-      Array.isArray(puzzle.genres) &&
-      puzzle.genres.length > 0 &&
-      typeof puzzle.hook === 'string' &&
-      puzzle.hook.trim()
+      Array.isArray(puzzle.clues) &&
+      puzzle.clues.length >= MAX_CLUES &&
+      puzzle.clues.every((clue) =>
+        clue && typeof clue.label === 'string' && clue.label.trim() &&
+        typeof clue.value === 'string' && clue.value.trim()
+      )
   );
 }
 
-function clueValue(puzzle, index) {
-  switch (index) {
-    case 0:
-      return String(puzzle.year);
-    case 1:
-      return puzzle.studio;
-    case 2:
-      return puzzle.format;
-    case 3:
-      return puzzle.genres.join(', ');
-    default:
-      return puzzle.hook;
+function clueOrder(puzzle, today, mediaType) {
+  const order = Array.from({ length: puzzle.clues.length }, (_, index) => index);
+  let seed = hashString(today + ':' + mediaType + ':' + puzzle.id);
+  for (let index = order.length - 1; index > 0; index -= 1) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const swap = seed % (index + 1);
+    [order[index], order[swap]] = [order[swap], order[index]];
   }
+  return order.slice(0, MAX_CLUES);
 }
 
 function gridFor(cluesShown) {
@@ -85,9 +75,9 @@ function gridFor(cluesShown) {
   ).join('');
 }
 
-function shareText(number, cluesShown, guesses, score, won) {
+function shareText(number, cluesShown, guesses, score, won, mediaLabel) {
   return [
-    site.name + ' daily #' + number,
+    site.name + ' ' + mediaLabel + ' daily #' + number,
     gridFor(cluesShown),
     won
       ? cluesShown +
@@ -102,15 +92,26 @@ function shareText(number, cluesShown, guesses, score, won) {
   ].join('\n');
 }
 
-function restoredResult(value, today) {
-  if (!value || value.date !== today || !Number.isInteger(value.cluesShown)) return null;
+function restoredResult(value, today, puzzle) {
+  if (!value || value.date !== today || value.puzzleId !== puzzle.id || !Number.isInteger(value.cluesShown)) {
+    return null;
+  }
   if (!Array.isArray(value.wrongGuesses) || typeof value.finished !== 'boolean') return null;
+  if (
+    !Array.isArray(value.order) ||
+    value.order.length !== MAX_CLUES ||
+    new Set(value.order).size !== MAX_CLUES ||
+    value.order.some((index) => !Number.isInteger(index) || index < 0 || index >= puzzle.clues.length)
+  ) {
+    return null;
+  }
 
   return {
     cluesShown: Math.min(MAX_CLUES, Math.max(1, value.cluesShown)),
     wrongGuesses: value.wrongGuesses.filter((guess) => typeof guess === 'string'),
     finished: value.finished,
     won: value.finished && value.won === true,
+    order: value.order,
   };
 }
 
@@ -119,16 +120,20 @@ export default {
   title: 'Anime Guess',
   blurb: 'Five clues, one title. Reveal only what you need.',
 
-  async mount(root) {
+  async mount(root, tool = {}) {
     injectStyles();
+    const media = resolveMediaType(tool.mediaType);
+    const storageKey = (name) => 'daily:' + name + ':v4:' + media.id;
+    const puzzleKey = 'daily:puzzle:v4:' + media.id;
 
     const head = el(
       'div',
       { class: 'tool-head' },
-      el('h1', {}, 'Anime Guess'),
-      el('p', {}, 'Five clues, one title. Reveal only what you need.')
+      el('p', { class: 'tool-kicker' }, media.id === 'anime' ? 'A daily trip through the anime atlas' : 'A daily trip through the manga atlas'),
+      el('h1', {}, media.label + ' Guess'),
+      el('p', {}, 'Five clues, one title. Each puzzle draws from a shuffled clue set.')
     );
-    const body = el('section', { class: 'panel', 'aria-label': 'Daily anime guessing game' });
+    const body = el('section', { class: 'panel daily-panel', 'aria-label': 'Daily ' + media.label.toLowerCase() + ' guessing game' });
     render(
       root,
       head,
@@ -136,19 +141,19 @@ export default {
     );
     render(
       body,
-      el('p', { class: 'daily-loading', role: 'status', 'aria-live': 'polite' },       'Loading today’s puzzle from MyAnimeList...')
+      el('p', { class: 'daily-loading', role: 'status', 'aria-live': 'polite' }, 'Loading today’s ' + media.label.toLowerCase() + ' puzzle from MyAnimeList...')
     );
 
     const today = dateKey();
     const index = dayIndex();
     let puzzle;
 
-    const cachedPuzzle = store.get(KEY_PUZZLE, null);
-    if (cachedPuzzle && cachedPuzzle.date === today && isValidPuzzle(cachedPuzzle.puzzle)) {
+    const cachedPuzzle = store.get(puzzleKey, null);
+    if (cachedPuzzle && cachedPuzzle.date === today && isValidPuzzle(cachedPuzzle.puzzle, media.id)) {
       puzzle = cachedPuzzle.puzzle;
     } else {
       try {
-        puzzle = await fetchDailyPuzzle(today);
+        puzzle = await fetchDailyPuzzle(today, media.id);
       } catch (error) {
         render(
           body,
@@ -157,25 +162,26 @@ export default {
             { class: 'daily-empty', role: 'alert' },
             error && error.message
               ? error.message
-              : 'Could not load today’s puzzle from MyAnimeList. Check your connection and try again.'
+              : 'Could not load today’s ' + media.label.toLowerCase() + ' puzzle from MyAnimeList. Check your connection and try again.'
           )
         );
         return;
       }
 
-      store.set(KEY_PUZZLE, { date: today, puzzle });
+      store.set(puzzleKey, { date: today, puzzle });
     }
 
     const number = parseInt(today.split('-').join(''), 10);
-    const savedResult = restoredResult(store.get(KEY_RESULT, null), today);
+    const savedResult = restoredResult(store.get(storageKey('result'), null), today, puzzle);
+    const order = savedResult ? savedResult.order : clueOrder(puzzle, today, media.id);
 
     let cluesShown = savedResult ? savedResult.cluesShown : 1;
     let wrongGuesses = savedResult ? savedResult.wrongGuesses : [];
     let finished = savedResult ? savedResult.finished : false;
     let won = savedResult ? savedResult.won : false;
-    let streak = Number(store.get(KEY_STREAK, 0)) || 0;
-    const lastDate = store.get(KEY_LAST_DATE, '');
-    const lastIndex = Number(store.get(KEY_LAST_INDEX, -1));
+    let streak = Number(store.get(storageKey('streak'), 0)) || 0;
+    const lastDate = store.get(storageKey('last-date'), '');
+    const lastIndex = Number(store.get(storageKey('last-index'), -1));
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     if (lastDate !== today && (lastDate !== dateKey(yesterday) || lastIndex !== index - 1)) {
@@ -196,7 +202,7 @@ export default {
       type: 'text',
       id: 'daily-guess',
       name: 'guess',
-      placeholder: 'Type an anime title',
+      placeholder: 'Type a ' + media.label.toLowerCase() + ' title',
       autocomplete: 'off',
       autocapitalize: 'none',
       spellcheck: 'false',
@@ -231,18 +237,20 @@ export default {
     }
 
     function saveProgress() {
-      const saved = store.set(KEY_RESULT, {
+      const saved = store.set(storageKey('result'), {
         date: today,
+        puzzleId: puzzle.id,
         cluesShown,
         wrongGuesses,
         finished,
         won,
+        order,
       });
 
       if (finished) {
-        store.set(KEY_LAST_DATE, today);
-        store.set(KEY_LAST_INDEX, index);
-        store.set(KEY_STREAK, streak);
+        store.set(storageKey('last-date'), today);
+        store.set(storageKey('last-index'), index);
+        store.set(storageKey('streak'), streak);
       }
 
       return saved;
@@ -253,20 +261,21 @@ export default {
         meter,
         el('span', {}, 'Clues ', el('strong', {}, cluesShown + '/' + MAX_CLUES)),
         el('span', {}, 'Score ', el('strong', {}, String(currentScore()))),
-        el('span', {}, 'Streak ', el('strong', {}, String(streak)))
+        el('span', {}, media.label + ' streak ', el('strong', {}, String(streak)))
       );
     }
 
     function renderClues() {
       render(
         clueList,
-        CLUE_LABELS.map((label, clueIndex) => {
-          const shown = clueIndex < cluesShown;
+        order.map((puzzleIndex, position) => {
+          const clue = puzzle.clues[puzzleIndex];
+          const shown = position < cluesShown;
           return el(
             'li',
-            { class: 'daily-clue' + (shown ? '' : ' daily-clue--locked') },
-            el('span', { class: 'daily-clue-label' }, label),
-            el('span', { class: 'daily-clue-value' }, shown ? clueValue(puzzle, clueIndex) : 'Locked')
+            { class: 'daily-clue' + (shown ? ' daily-clue--revealed' : ' daily-clue--locked') },
+            el('span', { class: 'daily-clue-label' }, clue.label),
+            el('span', { class: 'daily-clue-value' }, shown ? clue.value : 'Locked')
           );
         })
       );
@@ -307,7 +316,7 @@ export default {
             ? 'Solved with ' + score + ' points. Your streak is ' + streak + '.'
             : 'Come back tomorrow for another puzzle.'
         ),
-        el('pre', { class: 'daily-share' }, shareText(number, cluesShown, wrongGuesses.length + (won ? 1 : 0), score, won)),
+        el('pre', { class: 'daily-share' }, shareText(number, cluesShown, wrongGuesses.length + (won ? 1 : 0), score, won, media.label)),
         button
       );
       button.addEventListener('click', async () => {
@@ -316,7 +325,8 @@ export default {
           cluesShown,
           wrongGuesses.length + (won ? 1 : 0),
           score,
-          won
+          won,
+          media.label
         ));
         setStatus(
           status,

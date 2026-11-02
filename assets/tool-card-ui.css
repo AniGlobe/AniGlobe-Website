@@ -1,140 +1,51 @@
-/* Card body sections and the controls around it. */
-
-.tc-section {
-  padding-top: 12px;
-}
-
-.tc-section-title {
-  font-size: 9.5px;
-  font-weight: 650;
-  color: #6f6f6f;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 7px;
-}
-
-.tc-genre {
-  display: grid;
-  grid-template-columns: 82px 1fr 26px;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 4px;
-  font-size: 11px;
-}
-
-.tc-genre-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #3a3a3a;
-}
-
-.tc-genre-track {
-  height: 6px;
-  background: #f0f0f0;
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.tc-genre-fill {
-  height: 100%;
-  background: #4d6bfe;
-  border-radius: 3px;
-}
-
-.tc-genre-count {
-  text-align: right;
-  color: #6f6f6f;
-  font-variant-numeric: tabular-nums;
-  font-size: 10px;
-}
-
-.tc-title-row {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 11.5px;
-  line-height: 1.7;
-}
-
-.tc-title-rank {
-  color: #6f6f6f;
-  font-variant-numeric: tabular-nums;
-  font-size: 10px;
-  width: 12px;
-  flex-shrink: 0;
-}
-
-.tc-title-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tc-title-score {
-  font-variant-numeric: tabular-nums;
-  font-size: 10px;
-  color: #6f6f6f;
-}
-
-.tc-footer {
-  margin-top: 14px;
-  padding-top: 10px;
-  border-top: 1px solid #ececec;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  font-size: 9.5px;
-  color: #6f6f6f;
-}
-
-.tc-footer-mark {
-  font-weight: 650;
-  color: #3348b0;
-  letter-spacing: 0.02em;
-}
-
 .card-actions {
   display: flex;
-  gap: 8px;
+  justify-content: center;
   flex-wrap: wrap;
-  margin-top: 14px;
+  gap: 10px;
+  margin: 14px auto 0;
 }
 
-.card-note {
-  margin-top: 10px;
-  font-size: 12px;
-  color: #6f6f6f;
-  line-height: 1.55;
+.card-actions .btn {
+  min-width: 150px;
 }
 
-.tc-genre-list,
-.tc-title-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.tc-insight,
-.tc-footer-note {
-  font-size: 11.5px;
-  line-height: 1.55;
-  color: #5c5c5c;
-}
-
-.tc-footer-note {
-  margin-top: 10px;
-}
-
-@media (max-width: 420px) {
-  .taste-card {
-    padding: 18px;
+@media (max-width: 720px) {
+  .wrapped-form-grid,
+  .wrapped-settings {
+    grid-template-columns: 1fr;
   }
 
-  .tc-genre {
-    grid-template-columns: 68px 1fr 22px;
+  .wrapped-settings {
+    gap: 16px;
+  }
+
+  .wrapped-options {
+    gap: 2px 14px;
+  }
+}
+
+@media (max-width: 440px) {
+  .tc-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 10px;
+  }
+
+  .tc-head {
+    gap: 8px;
+  }
+
+  .tc-since {
+    max-width: 78px;
+    font-size: 10px;
+  }
+
+  .card-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .card-actions .btn {
+    width: 100%;
   }
 }

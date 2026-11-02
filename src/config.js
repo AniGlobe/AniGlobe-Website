@@ -1,23 +1,22 @@
 export const site = {
-  name: 'AniCard',
-  mark: 'A',
-  year: 2026,
-  tagline: 'Two small tools for anime lists.',
+  name: 'AniGlobe',
+  tagline: 'A little more world for your watchlist.',
   support: '',
 };
 
 export const runtime = {
   anilistEndpoint: 'https://graphql.anilist.co',
   jikanEndpoint: 'https://jikan.lucashdo.com/v1',
-  storagePrefix: 'anicard:',
+  storagePrefix: 'aniglobe:',
   dataBase: '../data/',
   htmlToImageUrl: 'https://unpkg.com/html-to-image@1.11.11/dist/html-to-image.js',
   htmlToImageGlobal: 'htmlToImage',
 };
 
 export const tools = [
-  { id: 'card', label: 'Anime Wrapped', load: () => import('./tools/card.js') },
-  { id: 'daily', label: 'Anime Guess', load: () => import('./tools/daily.js') },
+  { id: 'card', label: 'AniManga Wrapped', load: () => import('./tools/card.js') },
+  { id: 'daily', label: 'Anime Guess', mediaType: 'anime', load: () => import('./tools/daily.js') },
+  { id: 'manga-daily', label: 'Manga Guess', mediaType: 'manga', load: () => import('./tools/daily.js') },
 ];
 
 export const defaultToolId = 'card';

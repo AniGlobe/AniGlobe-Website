@@ -1,5 +1,5 @@
 /**
- * Data source registry shared by Anime Wrapped.
+ * Data source registry shared by AniManga Wrapped.
  */
 
 import anilist from './anilist.js';

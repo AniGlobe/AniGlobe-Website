@@ -1,5 +1,5 @@
 /**
- * AniList GraphQL client.
+ * AniList GraphQL client for public anime and manga profiles.
  *
  * Everything GraphQL-shaped lives here so tool modules stay presentation-only.
  * No auth, no key, no proxy — AniList allows public queries from the browser.
@@ -80,15 +80,14 @@ async function gql(query) {
    -------------------------------------------------------------------------- */
 
 /**
- * One round trip, everything the card needs.
+ * One round trip gets the selected media summary, favorites, and top completed
+ * titles without fetching the user's full list.
  *
  * `statistics.anime` gives aggregates and breakdowns; `favourites` gives the
  * user's favorites; a paginated list query gets only the top completed titles.
  *
  * The validated username is substituted into the query template.
  */
-const NAME_PLACEHOLDER = '%ANILIST_USERNAME%';
-
 const PROFILE_QUERY = `
   query {
     User(name: "%ANILIST_USERNAME%") {
@@ -97,10 +96,12 @@ const PROFILE_QUERY = `
       siteUrl
       createdAt
       statistics {
-        anime {
+        %MEDIA_FIELD% {
           count
           episodesWatched
           minutesWatched
+          chaptersRead
+          volumesRead
           meanScore
           standardDeviation
           genres(limit: 8, sort: COUNT_DESC) { genre count meanScore }
@@ -110,13 +111,13 @@ const PROFILE_QUERY = `
         }
       }
       favourites {
-        anime(page: 1) {
+        %MEDIA_FIELD%(page: 1) {
           nodes { id title { romaji english } averageScore genres }
         }
       }
     }
     Page(page: 1, perPage: 10) {
-      mediaList(userName: "%ANILIST_USERNAME%", type: ANIME, status: COMPLETED, sort: SCORE_DESC) {
+      mediaList(userName: "%ANILIST_USERNAME%", type: %MEDIA_TYPE%, status: COMPLETED, sort: SCORE_DESC) {
         score(format: POINT_10)
         media { id title { romaji english } averageScore genres }
       }
@@ -134,7 +135,8 @@ const PROFILE_QUERY = `
  * @param {string} username
  * @returns {Promise<object>} normalised profile, ready for rendering
  */
-export async function fetchProfile(username) {
+export async function fetchProfile(username, mediaType = 'anime') {
+  const media = mediaType === 'manga' ? 'manga' : 'anime';
   const name = String(username == null ? '' : username).trim();
 
   if (!name) throw new AniListError('Enter an AniList username first.', 'empty_input');
@@ -145,7 +147,11 @@ export async function fetchProfile(username) {
     );
   }
 
-  const data = await gql(PROFILE_QUERY.replace(/%ANILIST_USERNAME%/g, name));
+  const query = PROFILE_QUERY
+    .replace(/%ANILIST_USERNAME%/g, name)
+    .replace(/%MEDIA_FIELD%/g, media)
+    .replace(/%MEDIA_TYPE%/g, media.toUpperCase());
+  const data = await gql(query);
   const user = data && data.User;
 
   if (!user) {
@@ -158,7 +164,7 @@ export async function fetchProfile(username) {
   const entries = data.Page && Array.isArray(data.Page.mediaList)
     ? data.Page.mediaList
     : [];
-  return normaliseProfile(user, entries);
+  return normaliseProfile(user, entries, media);
 }
 
 /**
@@ -175,10 +181,10 @@ function isSafeUsername(name) {
  * Flatten AniList's shape into something the card renders without conditionals.
  * Missing data degrades to empty arrays and zeros instead of throwing.
  */
-function normaliseProfile(user, completed) {
-  const stats = (user.statistics && user.statistics.anime) || {};
+function normaliseProfile(user, completed, mediaType) {
+  const stats = (user.statistics && user.statistics[mediaType]) || {};
   const favouriteNodes =
-    (user.favourites && user.favourites.anime && user.favourites.anime.nodes) || [];
+    (user.favourites && user.favourites[mediaType] && user.favourites[mediaType].nodes) || [];
 
   // Scored entries only: a COMPLETED list can contain score 0, meaning unscored.
   const scored = completed
@@ -191,19 +197,26 @@ function normaliseProfile(user, completed) {
       genres: entry.media.genres || [],
     }));
 
-  const minutes = toNumber(stats.minutesWatched) || 0;
+  const minutes = toNumber(stats.minutesWatched);
+  const daysRead = null;
 
   return {
     source: 'AniList',
+    mediaType,
     id: user.id,
     name: user.name,
     url: user.siteUrl,
     memberSince: user.createdAt ? new Date(user.createdAt * 1000).getFullYear() : null,
     count: toNumber(stats.count) || 0,
-    episodes: toNumber(stats.episodesWatched) || 0,
+    episodes: mediaType === 'anime' ? toNumber(stats.episodesWatched) || 0 : null,
+    chapters: mediaType === 'manga' ? toNumber(stats.chaptersRead) || 0 : null,
+    volumes: mediaType === 'manga' ? toNumber(stats.volumesRead) || 0 : null,
     minutes,
-    hours: Math.round(minutes / 60),
-    days: Math.round((minutes / 60 / 24) * 10) / 10,
+    hours: mediaType === 'anime' && minutes !== null ? Math.round(minutes / 60) : null,
+    days: mediaType === 'anime' && minutes !== null
+      ? Math.round((minutes / 60 / 24) * 10) / 10
+      : null,
+    daysRead,
     meanScore: toNumber(stats.meanScore),
     deviation: toNumber(stats.standardDeviation),
     genres: (stats.genres || []).map((row) => ({
@@ -307,6 +320,27 @@ const DEFAULT_ARCHETYPE = {
 
 /** @returns {{label: string, blurb: string}} */
 export function tasteProfile(profile) {
+  if (profile.isSparse) {
+    return {
+      label: 'Still taking shape',
+      blurb: 'A broader pattern will appear as this list grows.',
+    };
+  }
+
+  if (profile.mediaType === 'manga') {
+    const chaptersPerTitle = profile.count > 0 ? (profile.chapters || 0) / profile.count : 0;
+    if (profile.count > 0 && chaptersPerTitle > 50) {
+      return { label: 'The Long-Form Reader', blurb: 'You stay with a series through plenty of chapters.' };
+    }
+    if (profile.count > 100) {
+      return { label: 'The Shelf Wanderer', blurb: 'Your manga list covers a wide stretch of stories.' };
+    }
+    if (profile.count > 0 && profile.count < 30) {
+      return { label: 'The Selective Reader', blurb: 'A focused list leaves room for each series to stand out.' };
+    }
+    return { label: 'The Page Turner', blurb: 'Your reading list keeps a mix of stories in rotation.' };
+  }
+
   const match = ARCHETYPES.find((archetype) => {
     try {
       return archetype.test(profile);

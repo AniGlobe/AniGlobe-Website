@@ -22,7 +22,7 @@ let mountToken = 0;
 function renderBrand() {
   render(
     dom.brand,
-    el('span', { class: 'brand-mark', 'aria-hidden': 'true' }, site.mark),
+    el('span', { class: 'brand-globe', 'aria-hidden': 'true' }),
     el('span', {}, site.name)
   );
   dom.brand.setAttribute('aria-label', site.name + ', home');
@@ -42,26 +42,43 @@ function renderNav() {
 }
 
 function renderFooter() {
-  const parts = [
-    el('span', {}, site.name + ' ' + site.year),
-    el(
-      'span',
-      {},
-      'Data from ',
-      el('a', { href: 'https://myanimelist.net', rel: 'noopener noreferrer', target: '_blank' }, 'MyAnimeList'),
-      ' via ',
-      el('a', { href: 'https://jikan.lucashdo.com/', rel: 'noopener noreferrer', target: '_blank' }, 'Jikan-Edge'),
-      ', or ',
-      el('a', { href: 'https://anilist.co', rel: 'noopener noreferrer', target: '_blank' }, 'AniList'),
-      '. Not affiliated with either service.'
-    ),
+  const toolLinks = tools.map((tool) =>
+    el('a', { href: '#/' + tool.id }, tool.label)
+  );
+  const sources = [
+    el('a', { href: 'https://myanimelist.net', rel: 'noopener noreferrer', target: '_blank' }, 'MyAnimeList'),
+    el('a', { href: 'https://jikan.lucashdo.com/', rel: 'noopener noreferrer', target: '_blank' }, 'Jikan-Edge'),
+    el('a', { href: 'https://anilist.co', rel: 'noopener noreferrer', target: '_blank' }, 'AniList'),
   ];
 
-  if (site.support) {
-    parts.push(el('a', { href: site.support, rel: 'noopener noreferrer', target: '_blank' }, 'Support'));
-  }
-
-  render(dom.footer, parts);
+  render(
+    dom.footer,
+    el(
+      'div',
+      { class: 'footer-main' },
+      el(
+        'section',
+        { class: 'footer-brand', 'aria-labelledby': 'footer-name' },
+        el('h2', { id: 'footer-name' }, site.name),
+        el('p', {}, site.tagline),
+        site.support
+          ? el('a', { href: site.support, rel: 'noopener noreferrer', target: '_blank' }, 'Support AniGlobe')
+          : null
+      ),
+      el(
+        'nav',
+        { class: 'footer-links', 'aria-label': 'Footer links' },
+        el('div', {}, el('h3', {}, 'Tools'), ...toolLinks),
+        el('div', {}, el('h3', {}, 'Data sources'), ...sources)
+      )
+    ),
+    el(
+      'div',
+      { class: 'footer-base' },
+      el('span', {}, '© ' + new Date().getFullYear() + ' AniGlobe'),
+      el('p', {}, 'AniGlobe is an independent project. MyAnimeList, Jikan-Edge, and AniList are not affiliated with it.')
+    )
+  );
 }
 
 function markActiveNav(toolId) {
@@ -82,7 +99,7 @@ function renderFailure(message) {
       el(
         'p',
         { style: { marginTop: '16px' } },
-        el('a', { class: 'btn', href: '#/' + defaultToolId }, 'Back to Anime Wrapped')
+        el('a', { class: 'btn', href: '#/' + defaultToolId }, 'Back to AniManga Wrapped')
       )
     )
   );
@@ -122,11 +139,11 @@ async function mountRoute() {
     return;
   }
 
-  document.title = (tool.title || entry.label) + ' | ' + site.name;
+  document.title = entry.label + ' | ' + site.name;
   render(dom.app);
 
   try {
-    const result = await tool.mount(dom.app);
+    const result = await tool.mount(dom.app, entry);
     if (token === mountToken) cleanupCurrent = typeof result === 'function' ? result : null;
   } catch (error) {
     if (token !== mountToken) return;

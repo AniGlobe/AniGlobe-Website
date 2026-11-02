@@ -1,19 +1,22 @@
-# AniCard
+# AniGlobe
 
-AniCard is a static site with two tools built around public MyAnimeList and
-AniList data:
+AniGlobe is a static site for people who keep anime and manga lists:
 
-- **Anime Wrapped** builds a profile summary from a MyAnimeList or AniList
-  username. MyAnimeList is the default source; its public data is read through
-  Jikan-Edge, a community-run API. AniList remains available as an alternative.
-- **Anime Guess** fetches one paginated, public MyAnimeList catalog page when
-  needed. Its five clues come from the release year, studio, format, genres,
-  and synopsis. The daily puzzle is cached in the current browser; progress and
-  streaks are saved there as well.
+- **AniManga Wrapped** reads a public MyAnimeList or AniList profile. Choose
+  anime or manga, select a card palette and the sections to show, then copy the
+  summary or save a PNG.
+- **Anime Guess** and **Manga Guess** each draw five varied clues from one
+  public catalog record. The date keeps each daily puzzle consistent. Scores,
+  streaks, and the current puzzle stay in the browser.
+
+The site does not store a profile or fetch a complete catalog. Profile requests
+load when someone submits a username. Guess requests load one catalog page and
+try up to five full records from that page until one has enough details for the
+daily clues. The selected puzzle is cached in the browser for that day.
 
 ## Run locally
 
-Serve the repository root over HTTP, then open the local address in a browser.
+Serve the repository root over HTTP, then open its local address in a browser.
 For example:
 
 ```powershell
@@ -23,33 +26,46 @@ python -m http.server 8000
 Open `http://localhost:8000`. The modules and JSON data need an HTTP server;
 opening `index.html` directly as a file will not work.
 
-## Catalog requests
+## Data sources
 
-The tools request only the public data they use. MyAnimeList requests go
-through [Jikan-Edge](https://jikan.lucashdo.com/), not the discontinued Jikan
-public API. Anime Guess fetches one top-anime page and one selected anime detail
-on the first visit of the day. It keeps that puzzle in the current browser for
-the rest of the day. No catalog export or bulk download is required.
+MyAnimeList data comes from [Jikan-Edge](https://jikan.lucashdo.com/), a
+community-run API. AniList profiles use its public GraphQL API. The tools
+request only the selected anime or manga data. Anime Guess reads the top anime
+catalog; Manga Guess reads the top manga catalog. Both stop fetching full
+records as soon as a usable daily puzzle is found, with a five-record limit.
+Rate limits and service availability are controlled by those providers.
 
-A future catalog viewer can request the next Jikan-Edge page only when someone
-browses to it, rather than downloading a local copy of the catalog.
-
-Anime Wrapped gets MyAnimeList profile, statistics, and favorites from one
-Jikan-Edge request. Requests give up after 10 seconds if the service stalls.
-AniList Wrapped requests profile statistics, favorites, and only the first ten
-completed titles, rather than downloading the entire list.
-
-## Project layout
+## Project structure
 
 ```text
 index.html
-assets/                     shared and tool-specific stylesheets
-src/app.js                  hash router and page shell
-src/anilist.js              AniList profile client and taste signals
-src/config.js               site metadata and tool registry
-src/lib.js                  DOM, storage, clipboard, and data helpers
-src/providers/               AniList and MyAnimeList profile adapters
-src/tools/card.js           Anime Wrapped form and actions
-src/tools/card-view.js      Anime Wrapped card rendering
-src/tools/daily.js          Anime Guess game
+assets/
+  styles.css                 shared design tokens and site shell
+  tool-card*.css             Wrapped form and export-card styling
+  tool-daily.css             shared anime and manga guessing-game styling
+src/
+  app.js                     routes, navigation, and footer
+  config.js                  site metadata, provider endpoints, tool registry
+  domain/media.js            shared anime and manga definitions
+  providers/                 provider adapters for public profile data
+  tools/card.js              AniManga Wrapped inputs and actions
+  tools/card-view.js         normalized profile card and copied summary
+  tools/daily.js             shared Anime Guess and Manga Guess gameplay
+  anilist.js                 AniList GraphQL client and normalized profile
+  export.js                  browser PNG export
+  lib.js                     shared DOM, storage, and browser helpers
 ```
+
+## Adding a tool
+
+Add a route to the registry in `src/config.js` and keep its implementation in a
+separate module under `src/tools/`. Put provider-specific response mapping in
+`src/providers/`, and share only normalized domain data with the tool. A future
+tracker, personal list, or database viewer can follow the same boundary without
+adding state to the site shell or to Wrapped.
+
+## Privacy and browser storage
+
+AniGlobe requests a public profile only after someone submits a username. It
+does not persist profile responses. Wrapped stores display preferences;
+Guess stores its daily puzzle and progress in the current browser.
