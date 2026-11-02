@@ -10,7 +10,7 @@
   --surface: #ffffff;
   --ink: #0d0d0d;
   --ink-soft: #5c5c5c;
-  --ink-faint: #8a8a8a;
+  --ink-faint: #707070;
   --line: #e5e5e5;
   --line-strong: #d1d5db;
   --accent: #4d6bfe;
@@ -101,6 +101,11 @@ button, input, select, textarea {
   outline: none;
 }
 
+.app:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .skip-link {
   position: absolute;
   left: -9999px;
@@ -155,7 +160,7 @@ button, input, select, textarea {
   height: 22px;
   border-radius: var(--r-sm);
   background: var(--accent);
-  color: #fff;
+  color: #000;
   font-size: 12px;
   font-weight: 700;
   display: grid;
@@ -169,7 +174,9 @@ button, input, select, textarea {
 }
 
 .nav-link {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 5px 10px;
   border-radius: var(--r-sm);
   font-size: 13px;
@@ -280,6 +287,7 @@ input[type='search'],
 select,
 textarea {
   width: 100%;
+  min-height: 44px;
   padding: 9px 11px;
   background: var(--surface);
   border: 1px solid var(--line-strong);
@@ -301,12 +309,13 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 44px;
   gap: var(--s2);
   padding: 9px 16px;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   background: var(--accent);
-  color: #fff;
+  color: #000;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;

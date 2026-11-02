@@ -1,32 +1,32 @@
 export const site = {
-  name: "AniCard",
-  mark: "A",
-  tagline: "Your taste, as a card. And one anime a day.",
-  url: "",
-  support: "",
-  year: new Date().getFullYear(),
+  name: 'AniCard',
+  mark: 'A',
+  year: 2026,
+  tagline: 'Two small tools for anime lists.',
+  support: '',
 };
 
-var C = String.fromCharCode;
-var D = C(46);
-var S = C(47);
-var CO = C(58);
-var PROTO = "https" + CO + S + S;
-
-function host(parts) { return PROTO + parts.join(D); }
-
 export const runtime = {
-  anilistEndpoint: host(["graphql", "anilist", "co"]),
-  jikanEndpoint: host(["api", "jikan", "moe"]) + S + "v4",
-  storagePrefix: "anicard:v1:",
-  dataBase: "../data/",
-  htmlToImageUrl: host(["cdn", "jsdelivr", "net"]) + S + "npm" + S + "html-to-image" + C(64) + "1.11.11" + S + "dist" + S + "html-to-image.js",
-  htmlToImageGlobal: "htmlToImage",
+  anilistEndpoint: 'https://graphql.anilist.co',
+  jikanEndpoint: 'https://api.jikan.moe/v4',
+  storagePrefix: 'anicard:',
+  dataBase: '../data/',
+  htmlToImageUrl: 'https://unpkg.com/html-to-image@1.11.11/dist/html-to-image.js',
+  htmlToImageGlobal: 'htmlToImage',
 };
 
 export const tools = [
-  { id: "card", label: "Taste card", load: () => import("./tools/card.js") },
-  { id: "daily", label: "Daily guess", load: () => import("./tools/daily.js") },
+  { id: 'card', label: 'Anime Wrapped', load: () => import('./tools/card.js') },
+  { id: 'daily', label: 'Anime Guess', load: () => import('./tools/daily.js') },
 ];
 
-export const defaultToolId = tools
+export const defaultToolId = 'card';
+
+export function resolveToolId(hash) {
+  const raw = String(hash == null ? '' : hash);
+  const trimmed = raw.charAt(0) === `#` ? raw.slice(1) : raw;
+  const path = trimmed.charAt(0) === `/` ? trimmed.slice(1) : trimmed;
+  const id = path.split(`?`)[0].split(`/`)[0].trim();
+  if (!id) return defaultToolId;
+  return tools.some((tool) => tool.id === id) ? id : defaultToolId;
+}

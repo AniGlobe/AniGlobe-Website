@@ -1,46 +1,50 @@
 # AniCard
 
-Two small tools on one static site.
+AniCard is a static site with two tools built around public MyAnimeList and
+AniList data:
 
-- **Taste card**: pick
+- **Anime Wrapped** builds a profile summary from a MyAnimeList or AniList
+  username. MyAnimeList is the default source; its public data is read through
+  Jikan, an unofficial API. AniList remains available as an alternative.
+- **Anime Guess** fetches one paginated, public MyAnimeList catalog page when
+  needed. Its five clues come from the release year, studio, format, genres,
+  and synopsis. The daily puzzle is cached in the current browser; progress and
+  streaks are saved there as well.
+
+## Run locally
+
+Serve the repository root over HTTP, then open the local address in a browser.
+For example:
+
+```powershell
+python -m http.server 8000
 ```
 
-npx serve .
+Open `http://localhost:8000`. The modules and JSON data need an HTTP server;
+opening `index.html` directly as a file will not work.
 
+## Catalog requests
+
+The tools request only the public data they use. MyAnimeList requests go
+through Jikan. Anime Guess fetches one safe-for-work catalog page at a time and
+chooses a clue-complete entry for the current date. It keeps that puzzle in the
+current browser for the rest of the day. No catalog export or bulk download is
+required.
+
+A future catalog viewer can request the next Jikan page only when someone
+browses to it, rather than downloading a local copy of the catalog.
+
+## Project layout
+
+```text
+index.html
+assets/                     shared and tool-specific stylesheets
+src/app.js                  hash router and page shell
+src/anilist.js              AniList profile client and taste signals
+src/config.js               site metadata and tool registry
+src/lib.js                  DOM, storage, clipboard, and data helpers
+src/providers/               AniList and MyAnimeList profile adapters
+src/tools/card.js           Anime Wrapped form and actions
+src/tools/card-view.js      Anime Wrapped card rendering
+src/tools/daily.js          Anime Guess game
 ```
-
-##
-```
-
-index.html                     shell, mounts nothing itself
-assets/styles.css              design tokens and shell
-assets/tool-card.css           card body
-assets/tool-card-ui.css        card sections and controls
-assets/tool-card-platform.css  platform picker
-assets/tool-daily.css          daily guess
-src/config.js                  site metadata and tool registry
-src/app.js                     hash router
-src/lib.js                     DOM, storage, clipboard, loader helpers
-src/taste.js                   archetypes and derived signals, shared
-src/export.js                  DOM to PNG
-src/providers/index.js         provider registry
-src/providers/anilist.js       AniList client
-src/providers/mal.js           MyAnimeList client, through Jikan
-src/tools/card.js              card tool wiring
-src/tools/card-view.js         card rendering, pure
-src/tools/daily.js             daily guess tool
-data/puzzles.json              puzzle bank, committed
-scripts/generate-puzzles.mjs   rebuilds the bank from AniList
-
-```
-
-## Adding a tracker
-
-Write
-```
-
-node scripts/generate-puzzles.mjs 365
-
-```
-
-Review the

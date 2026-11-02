@@ -1,1 +1,32 @@
-<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>AniCard</title><link rel=stylesheet href=style.css></head><body><h1>AniCard</h1><p>Paste your AniList username.</p><div class=row><input id=u placeholder="AniList username" autocomplete=off><button id=b>Build</button></div><div id=s class=status role=status></div><div id=o></div><script src=app.js></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset=utf-8>
+<meta name=viewport content=width=device-width,initial-scale=1>
+<title>AniCard</title>
+<meta name="description" content="Anime Wrapped and a daily anime guessing game, using public AniList data.">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<a class="skip-link" href="#app">Skip to the tool</a>
+
+<header class=site-header>
+  <div class="shell header-inner">
+    <a class="brand" id="brand" href="#/"></a>
+    <nav class="site-nav" id="nav" aria-label="Tools"></nav>
+  </div>
+</header>
+
+<main class="shell app" id="app" tabindex="-1"></main>
+
+<footer class=site-footer>
+  <div class="shell footer-inner" id="footer"></div>
+</footer>
+
+<noscript>
+  <p class="shell noscript">Both tools need JavaScript. Anime Wrapped reads public profiles from MyAnimeList or AniList.</p>
+</noscript>
+
+<script type=module src=src/app.js></script>
+</body>
+</html>

@@ -159,7 +159,7 @@ export async function fetchProfile(username) {
  */
 function isSafeUsername(name) {
   if (name.length < 2 || name.length > 32) return false;
-  return /^[A-Za-z0-9_-]+\x24/.test(name);
+  return name.split('').every((character) => /[A-Za-z0-9_-]/.test(character));
 }
 
 /**
@@ -187,6 +187,7 @@ function normaliseProfile(user) {
   const minutes = toNumber(stats.minutesWatched) || 0;
 
   return {
+    source: 'AniList',
     id: user.id,
     name: user.name,
     url: user.siteUrl,

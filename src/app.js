@@ -48,8 +48,12 @@ function renderFooter() {
       'span',
       {},
       'Data from ',
+      el('a', { href: 'https://myanimelist.net', rel: 'noopener noreferrer', target: '_blank' }, 'MyAnimeList'),
+      ' via ',
+      el('a', { href: 'https://jikan.moe', rel: 'noopener noreferrer', target: '_blank' }, 'Jikan'),
+      ', or ',
       el('a', { href: 'https://anilist.co', rel: 'noopener noreferrer', target: '_blank' }, 'AniList'),
-      '. Not affiliated with AniList.'
+      '. Not affiliated with either service.'
     ),
   ];
 
@@ -78,7 +82,7 @@ function renderFailure(message) {
       el(
         'p',
         { style: { marginTop: '16px' } },
-        el('a', { class: 'btn', href: '#/' + defaultToolId }, 'Back to the taste card')
+        el('a', { class: 'btn', href: '#/' + defaultToolId }, 'Back to Anime Wrapped')
       )
     )
   );

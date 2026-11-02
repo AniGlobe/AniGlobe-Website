@@ -52,7 +52,7 @@
 
 .tc-since {
   font-size: 11px;
-  color: #8a8a8a;
+  color: #6f6f6f;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -85,6 +85,7 @@
 }
 
 .tc-stat-value {
+  margin: 0;
   font-size: 17px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
@@ -94,7 +95,7 @@
 .tc-stat-label {
   margin-top: 1px;
   font-size: 9.5px;
-  color: #8a8a8a;
+  color: #6f6f6f;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
