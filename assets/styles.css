@@ -1,0 +1,451 @@
+/* ==========================================================================
+   Design tokens + shell only.
+   Tools style themselves with these tokens. Adding a tool must not require
+   editing this file — that is the whole point of the split.
+   ========================================================================== */
+
+:root {
+  /* Color */
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --ink: #0d0d0d;
+  --ink-soft: #5c5c5c;
+  --ink-faint: #8a8a8a;
+  --line: #e5e5e5;
+  --line-strong: #d1d5db;
+  --accent: #4d6bfe;
+  --accent-soft: #eef1ff;
+  --accent-ink: #3348b0;
+  --good: #1c6b3f;
+  --good-soft: #e9f7ef;
+  --warn: #8a5a00;
+  --warn-soft: #fff7e6;
+  --bad: #a12626;
+  --bad-soft: #fdecec;
+
+  /* Type */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Space */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  /* Shape */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --shadow: 0 1px 2px rgba(13, 13, 13, 0.04), 0 4px 16px rgba(13, 13, 13, 0.04);
+  --shell-max: 760px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, p, figure {
+  margin: 0;
+}
+
+img, canvas, svg {
+  display: block;
+  max-width: 100%;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* --------------------------------------------------------------------------
+   Layout
+   -------------------------------------------------------------------------- */
+
+.shell {
+  width: 100%;
+  max-width: var(--shell-max);
+  margin-inline: auto;
+  padding-inline: var(--s4);
+}
+
+.app {
+  flex: 1;
+  padding-block: var(--s5) var(--s7);
+}
+
+.app:focus {
+  outline: none;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--surface);
+  padding: var(--s2) var(--s3);
+  z-index: 10;
+}
+
+.skip-link:focus {
+  left: var(--s4);
+  top: var(--s2);
+  outline: 2px solid var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   Header / nav
+   -------------------------------------------------------------------------- */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: rgba(250, 250, 250, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  min-height: 56px;
+  flex-wrap: wrap;
+  padding-block: var(--s2);
+}
+
+.brand {
+  font-weight: 650;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.site-nav {
+  display: flex;
+  gap: var(--s1);
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink-soft);
+  text-decoration: none;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.nav-link:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.nav-link[aria-current='page'] {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+/* --------------------------------------------------------------------------
+   Footer
+   -------------------------------------------------------------------------- */
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  padding-block: var(--s5);
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+
+.footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.footer-inner a {
+  color: var(--ink-soft);
+}
+
+.noscript {
+  padding-block: var(--s5);
+  color: var(--bad);
+}
+
+/* --------------------------------------------------------------------------
+   Shared tool primitives — tools reuse these instead of inventing their own.
+   Only add here when a *second* tool needs it.
+   -------------------------------------------------------------------------- */
+
+.tool-head {
+  margin-bottom: var(--s5);
+}
+
+.tool-head h1 {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.tool-head p {
+  margin-top: var(--s1);
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  max-width: 52ch;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s5);
+  box-shadow: var(--shadow);
+}
+
+.panel + .panel {
+  margin-top: var(--s4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.01em;
+}
+
+.input-row {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.input-row > input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+input[type='text'],
+input[type='search'],
+select,
+textarea {
+  width: 100%;
+  padding: 9px 11px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+input[type='text']:focus,
+input[type='search']:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.14);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: 9px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 120ms ease, opacity 120ms ease;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn-outline {
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: var(--bg);
+  filter: none;
+}
+
+.btn-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-soft);
+  padding-inline: var(--s2);
+}
+
+.btn-quiet:hover:not(:disabled) {
+  background: var(--bg);
+  color: var(--ink);
+  filter: none;
+}
+
+.hint {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+
+.status {
+  margin-top: var(--s3);
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+
+.status:empty {
+  display: none;
+}
+
+.status[data-tone='error'] {
+  background: var(--bad-soft);
+  border-color: #f3c9c9;
+  color: var(--bad);
+}
+
+.status[data-tone='warn'] {
+  background: var(--warn-soft);
+  border-color: #f0e0bb;
+  color: var(--warn);
+}
+
+.status[data-tone='info'] {
+  background: var(--accent-soft);
+  border-color: #dbe1ff;
+  color: var(--accent-ink);
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Utility
+   -------------------------------------------------------------------------- */
+
+[hidden] {
+  display: none !important;
+}
+
+.skeleton {
+  border-radius: var(--r-sm);
+  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 37%, #f0f0f0 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.3s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .panel {
+    padding: var(--s4);
+  }
+
+  .tool-head h1 {
+    font-size: 18px;
+  }
+}

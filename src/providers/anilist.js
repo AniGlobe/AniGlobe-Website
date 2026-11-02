@@ -1,0 +1,4 @@
+/**
+ * AniList provider.
+ *
+ * Fixed

@@ -1,0 +1,20 @@
+body{font-family:system-ui,sans-serif;max-width:600px;margin:40px auto;padding:16px;background:#fafafa;color:#111}
+h1{font-size:20px;margin:0 0 4px}
+p{color:#666;margin:0 0 16px;font-size:14px}
+.row{display:flex;gap:8px;margin-bottom:12px}
+input{flex:1;padding:8px 12px;font:inherit;border:1px solid #ccc;border-radius:6px}
+button{padding:8px 16px;font-weight:600;border:0;border-radius:6px;background:#4d6bfe;color:#fff;cursor:pointer}
+button:disabled{opacity:.55}
+.status{font-size:13px;color:#666;min-height:20px;margin-bottom:12px}
+.status.error{color:#a12626}
+.card{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:20px}
+.card h2{margin:0 0 4px;font-size:18px}
+.since{font-size:11px;color:#888;margin-bottom:12px}
+.stats{display:flex;gap:24px;padding:12px 0;border-top:1px solid #eee;border-bottom:1px solid #eee;margin-bottom:12px}
+.stats b{display:block;font-size:20px}
+.stats span{font-size:10px;color:#666;text-transform:uppercase}
+.genre{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:5px}
+.genre .name{width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.genre .bar{flex:1;height:5px;background:#eee;border-radius:3px;overflow:hidden}
+.genre .bar i{display:block;height:100%;background:#4d6bfe}
+.genre .count{color:#888}
