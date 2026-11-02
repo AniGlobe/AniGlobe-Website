@@ -1,5 +1,5 @@
 /**
- * MyAnimeList data through Jikan's public, unofficial REST API.
+ * MyAnimeList data through the public Jikan-Edge API.
  */
 
 import { runtime } from '../config.js';
@@ -57,38 +57,41 @@ async function request(path) {
         throw new MalError('That MyAnimeList profile or resource was not found.', 'not_found');
       }
       if (response.status === 429) {
-        throw new MalError('Jikan is rate-limiting requests. Wait a minute and try again.', 'rate_limited');
+        const retryAfter = response.headers.get('Retry-After');
+        throw new MalError(
+          retryAfter
+            ? 'Jikan-Edge is rate-limiting requests. Try again in ' + retryAfter + ' seconds.'
+            : 'Jikan-Edge is rate-limiting requests. Wait a moment and try again.',
+          'rate_limited'
+        );
       }
       if (response.status === 503) {
-        throw new MalError('Jikan is temporarily unavailable. Try again shortly.', 'unavailable');
+        throw new MalError('Jikan-Edge is temporarily unavailable. Try again shortly.', 'unavailable');
       }
-      if (!response.ok) {
-        throw new MalError('Jikan returned HTTP ' + response.status + '.', 'http');
-      }
-
       payload = await response.json();
     } catch (error) {
       if (error instanceof MalError) throw error;
       if (controller.signal.aborted || (error && error.name === 'AbortError')) {
-        throw new MalError('Jikan did not respond within 10 seconds. Try again.', 'timeout');
+        throw new MalError('Jikan-Edge did not respond within 10 seconds. Try again.', 'timeout');
       }
       if (response) {
-        throw new MalError('Jikan returned data we could not read.', 'parse');
+        throw new MalError('Jikan-Edge returned data we could not read.', 'parse');
       }
-      throw new MalError('Could not reach Jikan. Check your connection and try again.', 'network');
+      throw new MalError('Could not reach Jikan-Edge. Check your connection and try again.', 'network');
     }
   } finally {
     clearTimeout(timeoutId);
   }
 
   if (payload && payload.error) {
-    throw new MalError(String(payload.error), 'api');
+    const code = payload.error.code === 'RATE_LIMITED' ? 'rate_limited' :
+      payload.error.code === 'NOT_FOUND' ? 'not_found' : 'api';
+    throw new MalError(payload.error.message || 'Jikan-Edge could not complete the request.', code);
+  }
+  if (!response.ok) {
+    throw new MalError('Jikan-Edge returned HTTP ' + response.status + '.', 'http');
   }
   return payload;
-}
-
-function titleOf(anime) {
-  return anime.title_english || anime.title || anime.title_japanese || 'Untitled';
 }
 
 function toYear(date) {
@@ -105,44 +108,27 @@ export async function fetchProfile(username) {
   }
 
   const encodedName = encodeURIComponent(name);
-  const [profileResponse, favoritesResult] = await Promise.all([
-    request('/users/' + encodedName + '/full'),
-    request('/users/' + encodedName + '/favorites').then(
-      (response) => ({ response }),
-      (error) => ({ error })
-    ),
-  ]);
-  const user = profileResponse && profileResponse.data;
+  const profileResponse = await request('/users/' + encodedName + '/full');
+  const profileData = profileResponse && profileResponse.data;
+  const user = profileData && profileData.profile;
   if (!user || !user.username) {
     throw new MalError('MyAnimeList returned an incomplete user profile.', 'parse');
   }
 
-  const stats = user.statistics && user.statistics.anime ? user.statistics.anime : {};
-  let favorites = [];
-  let favoritesAvailable = true;
-  let favoritesError = null;
-  if (favoritesResult.error) {
-    favoritesAvailable = false;
-    if (!(favoritesResult.error instanceof MalError && favoritesResult.error.code === 'not_found')) {
-      favoritesError = favoritesResult.error.message;
-    }
-  } else {
-    const anime = favoritesResult.response &&
-      favoritesResult.response.data &&
-      favoritesResult.response.data.anime;
-    favorites = Array.isArray(anime)
-      ? anime.map((entry) => ({
-          id: entry.mal_id,
-          title: titleOf(entry),
-          average: null,
-          genres: [],
-        }))
-      : [];
-  }
-
-  const daysWatched = Number(stats.days_watched);
+  const stats = profileData.statistics && profileData.statistics.anime
+    ? profileData.statistics.anime
+    : {};
+  const favorites = profileData.favorites && Array.isArray(profileData.favorites.anime)
+    ? profileData.favorites.anime.map((entry) => ({
+        id: entry.malId,
+        title: entry.title || 'Untitled',
+        average: null,
+        genres: [],
+      }))
+    : [];
+  const daysWatched = Number(stats.daysWatched);
   const hours = Number.isFinite(daysWatched) ? Math.round(daysWatched * 24) : null;
-  const rawMeanScore = Number(stats.mean_score);
+  const rawMeanScore = Number(stats.meanScore);
   const meanScoreRaw =
     Number.isFinite(rawMeanScore) && rawMeanScore > 0
       ? rawMeanScore
@@ -150,12 +136,12 @@ export async function fetchProfile(username) {
 
   return {
     source: 'MyAnimeList',
-    id: user.mal_id,
+    id: profileData.userId || null,
     name: user.username,
-    url: user.url,
-    memberSince: toYear(user.joined),
-    count: Number(stats.total_entries) || 0,
-    episodes: Number(stats.episodes_watched) || 0,
+    url: user.profileUrl,
+    memberSince: user.joinedAt ? new Date(user.joinedAt).getFullYear() : null,
+    count: Number(stats.totalEntries) || 0,
+    episodes: Number(stats.episodesWatched) || 0,
     minutes: Number.isFinite(hours) ? hours * 60 : null,
     hours,
     days: Number.isFinite(daysWatched) ? Math.round(daysWatched * 10) / 10 : null,
@@ -167,10 +153,10 @@ export async function fetchProfile(username) {
     years: [],
     distribution: [],
     favourites: favorites,
-    favoritesAvailable,
-    favoritesError,
+    favoritesAvailable: true,
+    favoritesError: null,
     scored: [],
-    isSparse: !(Number(stats.total_entries) > 0),
+    isSparse: !(Number(stats.totalEntries) > 0),
   };
 }
 
@@ -185,13 +171,11 @@ function cleanHook(synopsis) {
 }
 
 function puzzleFromAnime(anime) {
-  const titles = Array.isArray(anime.titles) ? anime.titles.map((entry) => entry.title) : [];
   const answers = [
     anime.title,
-    anime.title_english,
-    anime.title_japanese,
-    ...(anime.title_synonyms || []),
-    ...titles,
+    anime.titleEnglish,
+    anime.titleJapanese,
+    ...(anime.titleSynonyms || []),
   ].filter((title, index, all) =>
     typeof title === 'string' &&
     title.trim() &&
@@ -199,9 +183,7 @@ function puzzleFromAnime(anime) {
   );
   const studios = Array.isArray(anime.studios) ? anime.studios : [];
   const genres = Array.isArray(anime.genres) ? anime.genres : [];
-  const year =
-    Number(anime.year) ||
-    toYear(anime.aired && anime.aired.from);
+  const year = Number(anime.year) || toYear(anime.aired && anime.aired.from);
   const hook = cleanHook(anime.synopsis);
 
   if (
@@ -218,7 +200,7 @@ function puzzleFromAnime(anime) {
   }
 
   return {
-    id: anime.mal_id,
+    id: anime.malId,
     answers,
     year,
     studio: studios[0].name,
@@ -231,30 +213,20 @@ function puzzleFromAnime(anime) {
 /**
  * Request one catalog page at a time; the UI never downloads the full catalog.
  */
-export async function fetchAnimePage(page = 1, limit = 25) {
+export async function fetchAnimePage(page = 1) {
   if (!Number.isInteger(page) || page < 1) {
     throw new MalError('Catalog page must be a positive integer.', 'invalid_page');
   }
-  if (!Number.isInteger(limit) || limit < 1 || limit > 25) {
-    throw new MalError('Catalog page size must be between 1 and 25.', 'invalid_limit');
-  }
 
-  const query = new URLSearchParams({
-    page: String(page),
-    limit: String(limit),
-    sfw: 'true',
-    order_by: 'members',
-    sort: 'desc',
-  });
-  const result = await request('/anime?' + query.toString());
-  if (!result || !Array.isArray(result.data) || !result.pagination) {
-    throw new MalError('Jikan returned an incomplete anime catalog page.', 'parse');
+  const result = await request('/top/anime?page=' + page);
+  const pagination = result && result.meta && result.meta.pagination;
+  if (!result || !Array.isArray(result.data) || !pagination || !result.data.length) {
+    throw new MalError('Jikan-Edge returned an incomplete anime catalog page.', 'parse');
   }
   return {
     items: result.data,
-    page: result.pagination.current_page,
-    lastPage: result.pagination.last_visible_page,
-    hasNextPage: Boolean(result.pagination.has_next_page),
+    page: pagination.page,
+    hasNextPage: Boolean(pagination.hasNextPage),
   };
 }
 
@@ -265,26 +237,21 @@ export async function fetchDailyPuzzle(date) {
   }
 
   const firstPage = await fetchAnimePage(1);
-  if (!Number.isInteger(firstPage.lastPage) || firstPage.lastPage < 1) {
-    throw new MalError('Jikan returned an invalid catalog page count.', 'parse');
-  }
-
   const seed = parseInt(day.split('-').join(''), 10);
-  const startPage = seed % firstPage.lastPage;
-  let puzzle = null;
-
-  for (let attempt = 0; attempt < Math.min(5, firstPage.lastPage); attempt += 1) {
-    const page = ((startPage + attempt) % firstPage.lastPage) + 1;
-    const pageData = page === 1 ? firstPage : await fetchAnimePage(page);
-    const offset = seed % Math.max(pageData.items.length, 1);
-    const ordered = pageData.items.slice(offset).concat(pageData.items.slice(0, offset));
-    puzzle = ordered.map(puzzleFromAnime).find(Boolean) || null;
-    if (puzzle) break;
+  const offset = firstPage.items.reduce(
+    (value, anime) => (value * 31 + anime.malId) % firstPage.items.length,
+    seed % firstPage.items.length
+  );
+  const selected = firstPage.items[offset];
+  if (!selected || !Number.isInteger(selected.malId)) {
+    throw new MalError('Jikan-Edge did not return a valid anime for today’s puzzle.', 'parse');
   }
+  const detail = await request('/anime/' + selected.malId + '/full');
+  const puzzle = detail && detail.data ? puzzleFromAnime(detail.data) : null;
 
   if (!puzzle) {
     throw new MalError(
-      'Jikan did not return an anime with enough public details for today’s clues. Try again later.',
+      'Jikan-Edge did not return an anime with enough public details for today’s clues. Try again later.',
       'no_puzzle'
     );
   }
@@ -294,7 +261,7 @@ export async function fetchDailyPuzzle(date) {
 
 export default {
   id: 'mal',
-  label: 'MyAnimeList (via Jikan)',
+  label: 'MyAnimeList (via Jikan-Edge)',
   placeholder: 'MyAnimeList username',
   fetchProfile,
   isSafeUsername,

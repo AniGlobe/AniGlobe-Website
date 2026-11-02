@@ -8,7 +8,7 @@ export const site = {
 
 export const runtime = {
   anilistEndpoint: 'https://graphql.anilist.co',
-  jikanEndpoint: 'https://api.jikan.moe/v4',
+  jikanEndpoint: 'https://jikan.lucashdo.com/v1',
   storagePrefix: 'anicard:',
   dataBase: '../data/',
   htmlToImageUrl: 'https://unpkg.com/html-to-image@1.11.11/dist/html-to-image.js',

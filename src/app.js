@@ -50,7 +50,7 @@ function renderFooter() {
       'Data from ',
       el('a', { href: 'https://myanimelist.net', rel: 'noopener noreferrer', target: '_blank' }, 'MyAnimeList'),
       ' via ',
-      el('a', { href: 'https://jikan.moe', rel: 'noopener noreferrer', target: '_blank' }, 'Jikan'),
+      el('a', { href: 'https://jikan.lucashdo.com/', rel: 'noopener noreferrer', target: '_blank' }, 'Jikan-Edge'),
       ', or ',
       el('a', { href: 'https://anilist.co', rel: 'noopener noreferrer', target: '_blank' }, 'AniList'),
       '. Not affiliated with either service.'

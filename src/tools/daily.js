@@ -14,7 +14,7 @@ const KEY_LAST_DATE = 'daily:last-date';
 const KEY_LAST_INDEX = 'daily:last-index';
 const KEY_STREAK = 'daily:streak';
 const KEY_RESULT = 'daily:result';
-const KEY_PUZZLE = 'daily:puzzle';
+const KEY_PUZZLE = 'daily:puzzle:v2';
 
 const CLUE_LABELS = ['Year', 'Studio', 'Format', 'Genres', 'Hook'];
 const MAX_CLUES = CLUE_LABELS.length;

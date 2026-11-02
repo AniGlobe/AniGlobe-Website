@@ -5,7 +5,7 @@ AniList data:
 
 - **Anime Wrapped** builds a profile summary from a MyAnimeList or AniList
   username. MyAnimeList is the default source; its public data is read through
-  Jikan, an unofficial API. AniList remains available as an alternative.
+  Jikan-Edge, a community-run API. AniList remains available as an alternative.
 - **Anime Guess** fetches one paginated, public MyAnimeList catalog page when
   needed. Its five clues come from the release year, studio, format, genres,
   and synopsis. The daily puzzle is cached in the current browser; progress and
@@ -26,18 +26,17 @@ opening `index.html` directly as a file will not work.
 ## Catalog requests
 
 The tools request only the public data they use. MyAnimeList requests go
-through Jikan. Anime Guess fetches one safe-for-work catalog page at a time and
-chooses a clue-complete entry for the current date. It keeps that puzzle in the
-current browser for the rest of the day. No catalog export or bulk download is
-required.
+through [Jikan-Edge](https://jikan.lucashdo.com/), not the discontinued Jikan
+public API. Anime Guess fetches one top-anime page and one selected anime detail
+on the first visit of the day. It keeps that puzzle in the current browser for
+the rest of the day. No catalog export or bulk download is required.
 
-A future catalog viewer can request the next Jikan page only when someone
+A future catalog viewer can request the next Jikan-Edge page only when someone
 browses to it, rather than downloading a local copy of the catalog.
 
-Anime Wrapped requests profile and favorites data from Jikan at a rate-safe
-interval and gives up after 10 seconds if a request stalls. If favorites are
-unavailable, the profile summary still loads and shows the reason. AniList
-Wrapped requests profile statistics, favorites, and only the first ten
+Anime Wrapped gets MyAnimeList profile, statistics, and favorites from one
+Jikan-Edge request. Requests give up after 10 seconds if the service stalls.
+AniList Wrapped requests profile statistics, favorites, and only the first ten
 completed titles, rather than downloading the entire list.
 
 ## Project layout

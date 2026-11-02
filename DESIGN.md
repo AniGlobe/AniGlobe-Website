@@ -1,7 +1,7 @@
 # AniCard design direction
 
 Two tools on one static page, built from public AniList or MyAnimeList profiles.
-Profile data is not stored. Requests go to AniList or to Jikan, which provides
+Profile data is not stored. Requests go to AniList or Jikan-Edge, which provides
 public MyAnimeList data.
 
 ## Who it is for
