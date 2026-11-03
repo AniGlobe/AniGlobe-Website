@@ -126,14 +126,15 @@ export default {
     const storageKey = (name) => 'daily:' + name + ':v4:' + media.id;
     const puzzleKey = 'daily:puzzle:v4:' + media.id;
 
+    let lastScore = null;
+
     const head = el(
       'div',
       { class: 'tool-head' },
-      el('p', { class: 'tool-kicker' }, media.id === 'anime' ? 'A daily trip through the anime atlas' : 'A daily trip through the manga atlas'),
       el('h1', {}, media.label + ' Guess'),
-      el('p', {}, 'Five clues, one title. Each puzzle draws from a shuffled clue set.')
+      el('p', {}, 'Five clues hide one title. Every extra clue costs 60 points.')
     );
-    const body = el('section', { class: 'panel daily-panel', 'aria-label': 'Daily ' + media.label.toLowerCase() + ' guessing game' });
+    const body = el('section', { class: 'daily-panel', 'aria-label': 'Daily ' + media.label.toLowerCase() + ' guessing game' });
     render(
       root,
       head,
@@ -155,14 +156,24 @@ export default {
       try {
         puzzle = await fetchDailyPuzzle(today, media.id);
       } catch (error) {
+        const message = error && error.message
+          ? error.message
+          : 'Could not load today’s ' + media.label.toLowerCase() + ' puzzle from MyAnimeList. Check your connection and try again.';
         render(
           body,
           el(
             'div',
             { class: 'daily-empty', role: 'alert' },
-            error && error.message
-              ? error.message
-              : 'Could not load today’s ' + media.label.toLowerCase() + ' puzzle from MyAnimeList. Check your connection and try again.'
+            el('p', {}, message),
+            el(
+              'button',
+              {
+                class: 'btn btn-outline',
+                type: 'button',
+                onclick: () => window.location.reload(),
+              },
+              'Try again'
+            )
           )
         );
         return;
@@ -172,6 +183,13 @@ export default {
     }
 
     const number = parseInt(today.split('-').join(''), 10);
+
+    // The puzzle's day index sits beside the title once it exists: the stamp
+    // that ties the game to one date is stale for the cached case, so both
+    // paths set it after the puzzle is known.
+    const stamp = el('div', { class: 'tool-stamp num' }, 'Daily #' + number);
+    head.insertBefore(stamp, head.querySelector('p'));
+
     const savedResult = restoredResult(store.get(storageKey('result'), null), today, puzzle);
     const order = savedResult ? savedResult.order : clueOrder(puzzle, today, media.id);
 
@@ -188,9 +206,16 @@ export default {
       streak = 0;
     }
 
-    const meter = el('div', { class: 'daily-meter', 'aria-live': 'polite' });
+    const meter = el('div', { class: 'daily-meter kpis', 'aria-live': 'polite' });
     const clueList = el('ol', { class: 'daily-clues', 'aria-label': 'Puzzle clues' });
-    const guessRow = el('div', { class: 'daily-guesses', 'aria-label': 'Incorrect guesses' });
+    const board = el(
+      'section',
+      { class: 'daily-board' },
+      el('h2', { class: 'daily-board-title' }, 'From the record'),
+      clueList,
+      el('div', { class: 'daily-guesses', 'aria-label': 'Incorrect guesses' })
+    );
+    const guessRow = board.lastElementChild;
     const status = el('div', {
       class: 'status',
       role: 'status',
@@ -214,7 +239,7 @@ export default {
     const giveUpButton = el('button', { class: 'btn btn-quiet', type: 'button' }, 'Reveal answer');
     const form = el(
       'form',
-      { novalidate: true },
+      { class: 'daily-form', novalidate: true },
       el(
         'div',
         { class: 'field' },
@@ -224,13 +249,24 @@ export default {
       ),
       status
     );
+    const rules = el(
+      'div',
+      { class: 'daily-rules' },
+      el('p', { class: 'daily-rules-title' }, 'How scoring works'),
+      el('ul', {},
+        el('li', {}, 'Wrong guesses and new clues each cost 60 points.'),
+        el('li', {}, 'Guessing with the first clue keeps the start score of ' + START_SCORE + '.'),
+        el('li', {}, 'A solve in one clue scores ' + START_SCORE + '; the floor is ' + FLOOR + '.')
+      )
+    );
     const actions = el(
       'div',
       { class: 'daily-actions' },
       revealButton,
       giveUpButton
     );
-    render(body, meter, clueList, guessRow, actions, form, resultBox);
+    const side = el('div', { class: 'daily-side' }, form, actions, rules);
+    render(body, meter, board, side, resultBox);
 
     function currentScore() {
       return scoreFor(cluesShown, wrongGuesses.length);
@@ -256,13 +292,30 @@ export default {
       return saved;
     }
 
+    function kpi(label, value, options = {}) {
+      const valueNode = el('strong', { class: 'kpi-value num' }, value);
+      if (options.small) valueNode.append(el('small', {}, options.small));
+      return el('div', { class: 'kpi' + (options.lead ? ' kpi--lead' : '') }, el('span', { class: 'kpi-label' }, label), valueNode);
+    }
+
     function renderMeter() {
+      const score = currentScore();
+      const flash = lastScore !== null && score < lastScore;
+      lastScore = score;
+
       render(
         meter,
-        el('span', {}, 'Clues ', el('strong', {}, cluesShown + '/' + MAX_CLUES)),
-        el('span', {}, 'Score ', el('strong', {}, String(currentScore()))),
-        el('span', {}, media.label + ' streak ', el('strong', {}, String(streak)))
+        kpi('Score', String(score), { lead: true, flash }),
+        kpi('Clues', String(cluesShown), { small: 'of 5' }),
+        kpi(media.label + ' streak', String(streak))
       );
+
+      if (flash) {
+        setTimeout(() => {
+          const scoreValue = meter.querySelector('.kpi--lead .kpi-value');
+          if (scoreValue) delete scoreValue.dataset.flash;
+        }, 900);
+      }
     }
 
     function renderClues() {
@@ -273,9 +326,15 @@ export default {
           const shown = position < cluesShown;
           return el(
             'li',
-            { class: 'daily-clue' + (shown ? ' daily-clue--revealed' : ' daily-clue--locked') },
+            {
+              class:
+                'daily-clue' +
+                (shown ? ' daily-clue--revealed' : ' daily-clue--locked') +
+                (shown && position === cluesShown - 1 ? ' daily-clue--current' : ''),
+            },
+            el('span', { class: 'daily-clue-stamp', 'aria-hidden': 'true' }),
             el('span', { class: 'daily-clue-label' }, clue.label),
-            el('span', { class: 'daily-clue-value' }, shown ? clue.value : 'Locked')
+            el('span', { class: 'daily-clue-value' }, shown ? clue.value : '')
           );
         })
       );
@@ -286,15 +345,18 @@ export default {
         guessRow,
         wrongGuesses.length
           ? [
-              el('span', { class: 'daily-guesses-label' }, 'Wrong guesses'),
+              el('span', { class: 'daily-guesses-label' }, 'Missed'),
               ...wrongGuesses.map((guess) => el('span', { class: 'daily-guess-chip' }, guess)),
             ]
-          : null
+          : [
+              el('span', { class: 'daily-guesses-label daily-guesses-label--quiet' }, 'No misses yet.'),
+            ]
       );
     }
 
     function renderResult() {
       resultBox.hidden = !finished;
+      resultBox.dataset.tone = won ? 'win' : 'lose';
       if (!finished) {
         render(resultBox);
         return;
@@ -308,15 +370,19 @@ export default {
       );
       render(
         resultBox,
-        el('h2', { class: 'daily-result-title' }, won ? 'Correct' : 'The answer was ' + puzzle.answers[0]),
         el(
-          'p',
-          { class: 'daily-result-body' },
-          won
-            ? 'Solved with ' + score + ' points. Your streak is ' + streak + '.'
-            : 'Come back tomorrow for another puzzle.'
+          'div',
+          { class: 'daily-result-head' },
+          el('h2', { class: 'daily-result-title' }, won ? 'Correct' : 'The answer was ' + puzzle.answers[0]),
+          el(
+            'p',
+            { class: 'daily-result-body' },
+            won
+              ? 'Solved with ' + score + ' points. Your streak is ' + streak + '.'
+              : 'Come back tomorrow for another puzzle.'
+          )
         ),
-        el('pre', { class: 'daily-share' }, shareText(number, cluesShown, wrongGuesses.length + (won ? 1 : 0), score, won, media.label)),
+        el('pre', { class: 'daily-share num' }, shareText(number, cluesShown, wrongGuesses.length + (won ? 1 : 0), score, won, media.label)),
         button
       );
       button.addEventListener('click', async () => {

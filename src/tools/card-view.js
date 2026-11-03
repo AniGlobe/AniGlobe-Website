@@ -128,7 +128,6 @@ export function renderCard(profile, options) {
       el(
         'div',
         { class: 'tc-identity' },
-        el('p', { class: 'tc-kicker' }, media.label + ' field notes'),
         profile.url
           ? el(
               'h2',
@@ -139,7 +138,8 @@ export function renderCard(profile, options) {
       ),
       profile.memberSince
         ? el('p', { class: 'tc-since' }, profile.source + ' since ' + profile.memberSince)
-        : null
+        : null,
+      el('span', { class: 'tc-globe', 'aria-hidden': 'true' })
     ),
     prefs.showInsight
       ? el(

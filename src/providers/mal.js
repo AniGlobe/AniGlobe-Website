@@ -316,6 +316,7 @@ export async function fetchDailyPuzzle(date, mediaType = 'anime') {
 export default {
   id: 'mal',
   label: 'MyAnimeList (via Jikan-Edge)',
+  shortLabel: 'MyAnimeList',
   placeholder: 'MyAnimeList username',
   fetchProfile,
   isSafeUsername,

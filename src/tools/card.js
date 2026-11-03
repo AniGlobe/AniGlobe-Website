@@ -6,11 +6,11 @@ import { getProvider, providers } from '../providers/index.js';
 
 const STYLE_FILES = ['tool-card.css', 'tool-card-ui.css'];
 const PREFERENCES_KEY = 'wrapped:preferences';
-const CARD_BACKGROUNDS = {
-  atlas: '#f4ecd8',
-  coast: '#e5f1ed',
-  night: '#183b3a',
-};
+const THEMES = [
+  { value: 'atlas', name: 'Sea glass' },
+  { value: 'coast', name: 'Open water' },
+  { value: 'night', name: 'Night map' },
+];
 
 function injectStyles() {
   for (const file of STYLE_FILES) {
@@ -38,18 +38,115 @@ function savedPreferences() {
   };
 }
 
-function emptyCard() {
+/**
+ * A segmented radio group exposed with the old select-style interface:
+ * `control.node` for rendering and events, `control.value` to read/write.
+ *
+ * @param {string} idPrefix used for the radio ids and the group label id
+ * @param {string} name shared radio name, which makes the group a radio group
+ * @param {string} labelText visible group label
+ * @param {{value: string, label: string}[]} options
+ * @param {string} preferred checked option
+ */
+function pickControl(idPrefix, name, labelText, options, preferred) {
+  const groupLabel = el('span', { class: 'pick-label', id: idPrefix + '-label' }, labelText);
+  const group = el('div', {
+    class: 'pick',
+    role: 'radiogroup',
+    'aria-labelledby': idPrefix + '-label',
+  });
+
+  for (const option of options) {
+    const input = el('input', {
+      type: 'radio',
+      id: idPrefix + '-' + option.value,
+      name,
+      value: option.value,
+    });
+    input.checked = option.value === preferred;
+    group.append(el('label', { for: input.id }, input, el('span', {}, option.label)));
+  }
+
+  return {
+    node: el('div', { class: 'field' }, groupLabel, group),
+    get value() {
+      const checked = group.querySelector('input:checked');
+      return checked ? checked.value : options[0].value;
+    },
+    set value(next) {
+      const input = group.querySelector('input[value="' + next + '"]');
+      if (input) input.checked = true;
+    },
+  };
+}
+
+/** The card palettes as swatches. Same interface as `pickControl`. */
+function swatchControl(preferred) {
+  const groupLabel = el('span', { class: 'pick-label', id: 'wrapped-theme-label' }, 'Card palette');
+  const group = el('div', {
+    class: 'swatches',
+    role: 'radiogroup',
+    'aria-labelledby': 'wrapped-theme-label',
+  });
+
+  for (const theme of THEMES) {
+    const input = el('input', {
+      type: 'radio',
+      id: 'wrapped-theme-' + theme.value,
+      name: 'theme',
+      value: theme.value,
+    });
+    input.checked = theme.value === preferred;
+    group.append(
+      el(
+        'label',
+        { class: 'swatch', for: input.id },
+        input,
+        el('span', { class: 'swatch-dot' }),
+        el('span', { class: 'swatch-name' }, theme.name)
+      )
+    );
+  }
+
+  return {
+    node: el('div', { class: 'field' }, groupLabel, group),
+    get value() {
+      const checked = group.querySelector('input:checked');
+      return checked ? checked.value : THEMES[0].value;
+    },
+    set value(next) {
+      const input = group.querySelector('input[value="' + next + '"]');
+      if (input) input.checked = true;
+    },
+  };
+}
+
+/**
+ * The empty stage: a dashed slot with grey placeholder bars and one honest
+ * sentence. `busy` marks it as the loading state while a profile is fetched.
+ */
+function slotsCard(message, busy) {
+  const attrs = {
+    class: 'taste-card taste-card--empty' + (busy ? ' taste-card--loading' : ''),
+  };
+  if (busy) {
+    attrs.role = 'status';
+  }
+
   return el(
     'div',
-    { class: 'taste-card taste-card--empty' },
-    el('p', {}, 'Your wrapped card will appear here after you enter a public profile.')
+    attrs,
+    el('span', { class: 'slot-globe', 'aria-hidden': 'true' }),
+    el('span', { class: 'slot slot--name', 'aria-hidden': 'true' }),
+    el('span', { class: 'slot slot--stat', 'aria-hidden': 'true' }),
+    el('p', {}, message)
   );
 }
 
 function checkOption(id, label, checked) {
   const input = el('input', { type: 'checkbox', id, name: id });
   input.checked = checked;
-  return el('label', { class: 'wrapped-check', for: id }, input, el('span', {}, label));
+  return el('label', { class: 'check', for: id }, input, el('span', {}, label));
 }
 
 export default {
@@ -62,22 +159,25 @@ export default {
     const preferences = savedPreferences();
     let currentProfile = null;
     let currentCard = null;
-    const sourceLabel = el('label', { for: 'wrapped-source' }, 'List service');
-    const sourceSelect = el(
-      'select',
-      { id: 'wrapped-source', name: 'source', 'aria-describedby': 'wrapped-hint' },
-      providers.map((provider) => el('option', { value: provider.id }, provider.label))
+
+    const sourcePick = pickControl(
+      'wrapped-source',
+      'source',
+      'List service',
+      providers.map((provider) => ({
+        value: provider.id,
+        label: provider.shortLabel || provider.label,
+      })),
+      preferences.source
     );
-    sourceSelect.value = preferences.source;
-    const mediaLabel = el('label', { for: 'wrapped-media' }, 'Make a wrap for');
-    const mediaSelect = el(
-      'select',
-      { id: 'wrapped-media', name: 'media', 'aria-describedby': 'wrapped-hint' },
-      ['anime', 'manga'].map((type) =>
-        el('option', { value: type }, resolveMediaType(type).label)
-      )
+    const mediaPick = pickControl(
+      'wrapped-media',
+      'media',
+      'Make a wrap for',
+      ['anime', 'manga'].map((type) => ({ value: type, label: resolveMediaType(type).label })),
+      preferences.mediaType
     );
-    mediaSelect.value = preferences.mediaType;
+    const themePick = swatchControl(preferences.theme);
 
     const usernameLabel = el('label', { for: 'wrapped-username' }, 'Profile username');
     const username = el('input', {
@@ -99,20 +199,13 @@ export default {
       'aria-live': 'polite',
       'aria-atomic': 'true',
     });
-    const stage = el('div', { class: 'card-stage', 'aria-live': 'polite' }, emptyCard());
+    const stage = el(
+      'div',
+      { class: 'card-stage', 'aria-live': 'polite' },
+      slotsCard('Your wrap will take shape here. Enter a public profile to begin.')
+    );
     const actions = el('div', { class: 'card-actions', hidden: true });
 
-    const themeLabel = el('label', { for: 'wrapped-theme' }, 'Card palette');
-    const themeSelect = el(
-      'select',
-      { id: 'wrapped-theme', name: 'theme' },
-      [
-        ['atlas', 'Atlas paper'],
-        ['coast', 'Coastal chart'],
-        ['night', 'Night voyage'],
-      ].map(([value, label]) => el('option', { value }, label))
-    );
-    themeSelect.value = preferences.theme;
     const options = el(
       'fieldset',
       { class: 'wrapped-options' },
@@ -122,15 +215,12 @@ export default {
       checkOption('wrapped-scored', 'Highest-rated titles', preferences.showScored),
       checkOption('wrapped-insight', 'Taste notes', preferences.showInsight)
     );
+
     const form = el(
       'form',
       { class: 'wrapped-form' },
-      el(
-        'div',
-        { class: 'wrapped-form-grid' },
-        el('div', { class: 'field' }, sourceLabel, sourceSelect),
-        el('div', { class: 'field' }, mediaLabel, mediaSelect)
-      ),
+      sourcePick.node,
+      mediaPick.node,
       el(
         'div',
         { class: 'field wrapped-username-field' },
@@ -146,7 +236,7 @@ export default {
         'details',
         { class: 'wrapped-customize' },
         el('summary', {}, 'Card settings'),
-        el('div', { class: 'wrapped-settings' }, el('div', { class: 'field' }, themeLabel, themeSelect), options)
+        el('div', { class: 'wrapped-settings' }, themePick.node, options)
       ),
       status
     );
@@ -155,19 +245,27 @@ export default {
       root,
       el(
         'div',
-        { class: 'tool-head wrapped-heading' },
-        el('p', { class: 'tool-kicker' }, 'A snapshot from your side of the map'),
-        el('h1', {}, 'AniManga Wrapped'),
-        el('p', {}, 'Pick a list, add a username, and make the card feel like yours.')
-      ),
-      el('section', { class: 'panel wrapped-panel', 'aria-label': 'AniManga Wrapped generator' }, form),
-      stage,
-      actions
+        { class: 'wrapped-page' },
+        el(
+          'div',
+          { class: 'tool-head wrapped-heading' },
+          el('h1', {}, 'AniManga Wrapped'),
+          el('p', {}, 'Turn your anime or manga list into a card worth sharing.')
+        ),
+        el('section', { class: 'panel wrapped-panel', 'aria-label': 'AniManga Wrapped generator' }, form),
+        el(
+          'aside',
+          { class: 'wrapped-preview', 'aria-labelledby': 'wrapped-preview-title' },
+          el('h2', { id: 'wrapped-preview-title' }, 'Your wrapped card'),
+          stage,
+          actions
+        )
+      )
     );
 
     function currentOptions() {
       return {
-        theme: themeSelect.value,
+        theme: themePick.value,
         showGenres: document.getElementById('wrapped-genres').checked,
         showFavorites: document.getElementById('wrapped-favorites').checked,
         showScored: document.getElementById('wrapped-scored').checked,
@@ -176,11 +274,10 @@ export default {
     }
 
     function savePreferences() {
-      const current = currentOptions();
       store.set(PREFERENCES_KEY, {
-        source: sourceSelect.value,
-        mediaType: mediaSelect.value,
-        ...current,
+        source: sourcePick.value,
+        mediaType: mediaPick.value,
+        ...currentOptions(),
       });
     }
 
@@ -191,22 +288,22 @@ export default {
     }
 
     function updateUsernameField() {
-      const provider = getProvider(sourceSelect.value);
+      const provider = getProvider(sourcePick.value);
       if (!provider) return;
-      const media = resolveMediaType(mediaSelect.value);
+      const media = resolveMediaType(mediaPick.value);
       username.placeholder = provider.id === 'mal'
         ? 'MyAnimeList username'
         : 'AniList username';
       username.maxLength = provider.id === 'mal' ? 16 : 32;
-      usernameLabel.textContent = provider.label + ' username';
+      usernameLabel.textContent = (provider.shortLabel || provider.label) + ' username';
       username.autocomplete = 'username';
       submit.textContent = 'Build my ' + media.label.toLowerCase() + ' wrap';
     }
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const provider = getProvider(sourceSelect.value);
-      const media = resolveMediaType(mediaSelect.value);
+      const provider = getProvider(sourcePick.value);
+      const media = resolveMediaType(mediaPick.value);
       if (!provider) {
         setStatus(status, 'Choose a supported profile source.', 'error');
         return;
@@ -220,11 +317,7 @@ export default {
       actions.hidden = true;
       render(
         stage,
-        el(
-          'div',
-          { class: 'taste-card taste-card--empty', role: 'status' },
-          'Loading your public ' + provider.label + ' ' + media.label.toLowerCase() + ' profile...'
-        )
+        slotsCard('Loading your public ' + provider.label + ' ' + media.label.toLowerCase() + ' profile...', true)
       );
       setStatus(status, 'Fetching public profile data from ' + provider.label + '.', 'info');
 
@@ -253,7 +346,8 @@ export default {
               'aniglobe',
               media.id + '-wrapped-' + profile.name
             );
-            await exportNode(currentCard, fileName, { background: CARD_BACKGROUNDS[themeSelect.value] });
+            const background = getComputedStyle(currentCard).getPropertyValue('--card-bg').trim();
+            await exportNode(currentCard, fileName, { background });
             setStatus(status, 'Your card image has been saved.', 'info');
           } catch (error) {
             setStatus(
@@ -266,7 +360,7 @@ export default {
           }
         });
       } catch (error) {
-        render(stage, emptyCard());
+        render(stage, slotsCard('Your wrap will take shape here. Enter a public profile to begin.'));
         setStatus(
           status,
           error && error.message ? error.message : 'Could not build the wrap. Try again.',
@@ -278,13 +372,13 @@ export default {
       }
     });
 
-    [sourceSelect, mediaSelect].forEach((control) => {
+    [sourcePick.node, mediaPick.node].forEach((control) => {
       control.addEventListener('change', () => {
         updateUsernameField();
         savePreferences();
       });
     });
-    themeSelect.addEventListener('change', () => {
+    themePick.node.addEventListener('change', () => {
       savePreferences();
       refreshCard();
     });

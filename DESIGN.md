@@ -2,8 +2,8 @@
 
 AniGlobe is a small, public-data toolkit for anime and manga fans. It turns a
 list profile into a personal wrap and makes a daily guessing game from catalog
-records. The site should feel like a well-kept field guide, with the warmth of
-an atlas someone has actually used.
+records. The interface should feel like a lively ocean atlas: clear enough for
+profile data, with a little movement and discovery in the games.
 
 ## Audience and voice
 
@@ -14,35 +14,47 @@ community activity.
 
 ## Visual language
 
-- **Palette:** warm paper `#f3efe3` and ink `#1d3331` ground the page. Ocean
-  teal `#08747a` marks the main action and active route. Clay `#a14327` is a
-  rare navigation and focus accent. Each card palette uses the same dark ink
-  and clear contrast.
-- **Typography:** use the system sans stack. It stays readable on the devices
-  this site supports and avoids loading a decorative font over profile data.
-  Use tabular numerals only where values need comparison.
-- **Globe motif:** latitude and longitude arcs on the wordmark and one
-  game-panel marker tie the product name to navigation. They identify the
-  tool, rather than filling the page with a map pattern.
-- **Surfaces:** paper panels sit directly on the warm page. Use borders to
-  separate controls and sections; reserve elevation for content that needs
-  it. Avoid page-wide gradients, glass, glow, and decorative grids.
-- **Shape:** small radii belong to inputs and buttons. A single asymmetrical
-  card corner gives the wrapped summary a printed-card edge.
+- **Palette:** cool sea-glass `#edf6f6`, deep marine ink `#153441`, and ocean
+  teal `#087b84` set the base. Teal marks active routes, the main action, and
+  the current clue; its pale tint carries selected surfaces. Error and warning
+  colors only communicate those states.
+- **Typography:** DM Sans gives the interface a rounded, readable voice. Use
+  tabular numerals where values need comparison.
+- **Globe motif:** the wordmark's latitude and longitude, the wrap preview, and
+  the revealed-clue path connect the tools to an atlas. They carry navigation
+  or game state, rather than filling the page with a map pattern.
+- **Surfaces:** white work surfaces sit on the cool page ground. Use quiet
+  borders to separate controls and sections; reserve elevation for content
+  that needs it. Avoid page-wide gradients, glass, glow, and decorative grids.
+- **Shape:** rounded controls keep touch targets friendly. The wrap card keeps
+  one clipped corner so it reads like a printed field note.
 
 ## Composition and motion
 
 The wrapped form leads with the two choices that define a profile, source and
 media type. Personalization stays in a disclosure so the profile remains the
-main action. A finished card gets room to read and export.
+main action. The preview sits beside the form on wide screens and below it on
+phones; a finished card gets room to read and export.
 
-The guessing page keeps the revealed clue, next action, score, and guess field
-in the same reading flow. Five of the available record clues appear in a
-date-seeded order, so refreshing does not reshuffle an in-progress game.
+The guessing page pairs the clue path with the guess field. Score, streak, and
+clues stay together; each reveal marks the current point in the route. Five
+available record clues appear in a date-seeded order, so refreshing does not
+reshuffle an in-progress game.
+
+**Screen questions and signatures:** Wrapped asks which public list to turn
+into a shareable card; the real profile card is the answer. Guess asks which
+catalog title matches the revealed facts; the clue path carries that answer.
+The teal ladder keeps the globe's ocean color on active routes and actions,
+while the pale tint marks the current clue. DM Sans keeps profile details
+readable without making the data feel like a report. A compact three-tool
+sidebar suits the desktop app; a native navigation dialog keeps the same
+choices reachable on phones.
 
 **Dials:** ENERGY 2 / RHYTHM 2 / MOTION 2. Pages are lively but not loud. A
-short clue-reveal transition marks game progress; reduced-motion preferences
-remove that transition. Hover, active, and focus states confirm controls.
+short transition marks the newly revealed clue; reduced-motion preferences
+remove that movement. Hover, active, and focus states confirm controls. The
+main landmark uses a thin teal top rule on keyboard focus, so readers can find
+the content without framing the entire work area.
 
 ## Product structure
 

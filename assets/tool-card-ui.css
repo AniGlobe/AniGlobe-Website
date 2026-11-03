@@ -1,51 +1,325 @@
-.card-actions {
+/* The exported AniManga Wrapped card: a field-note sheet. Paper tint and hair
+   rules carry the theme; the clipped corner (6px at bottom right) is the page's
+   signature. Everything here also has to survive a PNG export, so the look
+   stays typography and plain shapes only. */
+
+.taste-card {
+  --card-bg: #eef7f6;
+  --card-ink: #132225;
+  --card-muted: #4f6660;
+  --card-rule: #d9e7e4;
+  --card-edge: #cfe0dc;
+  --card-accent: #1b6c80;
+  --card-bar: #1b6c80;
+
+  position: relative;
+  width: min(100%, 440px);
+  padding: 24px 24px 18px;
+  border: 1px solid var(--card-edge);
+  border-radius: 18px 18px 6px 18px;
+  background: var(--card-bg);
+  color: var(--card-ink);
+  font-family: var(--font-sans);
+}
+
+.taste-card[data-theme='coast'] {
+  --card-bg: #e8f1f8;
+  --card-ink: #12283c;
+  --card-muted: #4d6478;
+  --card-rule: #d2e2f0;
+  --card-edge: #c5dbec;
+}
+
+.taste-card[data-theme='night'] {
+  --card-bg: #17303a;
+  --card-ink: #edf6f9;
+  --card-muted: #9db7bf;
+  --card-rule: #2c4d59;
+  --card-edge: #26495a;
+  --card-accent: #62c9da;
+  --card-bar: #62c9da;
+}
+
+/* ---------- head: name, tenure and the stamped globe ---------- */
+
+.tc-head {
+  position: relative;
+  display: grid;
+  justify-items: start;
+  gap: 3px;
+  padding-right: 52px;
+}
+
+.tc-name {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.tc-name a {
+  text-decoration: none;
+}
+
+.tc-since {
+  color: var(--card-muted);
+  font-size: 12px;
+}
+
+.tc-globe {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid var(--card-accent);
+  border-radius: 50%;
+  opacity: 0.9;
+}
+
+.tc-globe::before {
+  content: '';
+  position: absolute;
+  inset: 13px;
+  border-radius: 50%;
+  background: var(--card-accent);
+}
+
+.tc-globe::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--card-accent);
+  border-radius: 50%;
+  transform: scale(0.44, 1);
+}
+
+/* ---------- the taste note ---------- */
+
+.tc-archetype {
+  margin-top: 18px;
+  padding-left: 11px;
+  border-left: 2px solid var(--card-accent);
+}
+
+.tc-archetype-label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.tc-archetype-blurb {
+  margin-top: 3px;
+  color: var(--card-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* ---------- four figures, one divided row ---------- */
+
+.tc-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--card-rule);
+}
+
+.tc-stat {
+  min-width: 0;
+}
+
+.tc-stat + .tc-stat {
+  padding-left: 12px;
+  border-left: 1px solid var(--card-rule);
+}
+
+.tc-stat-label {
+  color: var(--card-muted);
+  font-size: 11px;
+}
+
+.tc-stat-value {
+  margin-top: 4px;
+  font-family: var(--font-mono); /* taste-skill-ignore: card figures, the one mono job in the direction */
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- sections ---------- */
+
+.tc-section {
+  margin-top: 18px;
+}
+
+.tc-section-title {
+  color: var(--card-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tc-genre-list,
+.tc-title-list {
+  display: grid;
+  gap: 2px;
+  margin: 9px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tc-genre {
+  display: grid;
+  grid-template-columns: minmax(0, 96px) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 26px;
+}
+
+.tc-genre-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tc-genre-track {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--card-rule);
+  overflow: hidden;
+}
+
+.tc-genre-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--card-bar);
+}
+
+.tc-genre-count {
+  color: var(--card-muted);
+  font-family: var(--font-mono); /* taste-skill-ignore: mono figure, the one mono job in the direction */
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- title rows with dotted leaders ---------- */
+
+.tc-title-row {
   display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 14px auto 0;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 28px;
 }
 
-.card-actions .btn {
-  min-width: 150px;
+.tc-title-rank {
+  color: var(--card-muted);
+  font-family: var(--font-mono); /* taste-skill-ignore: mono figure, the one mono job in the direction */
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 720px) {
-  .wrapped-form-grid,
-  .wrapped-settings {
-    grid-template-columns: 1fr;
-  }
-
-  .wrapped-settings {
-    gap: 16px;
-  }
-
-  .wrapped-options {
-    gap: 2px 14px;
-  }
+.tc-title-name {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 5px;
+  border-bottom: 1px dotted var(--card-rule);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-@media (max-width: 440px) {
-  .tc-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px 10px;
-  }
+.tc-title-score {
+  color: var(--card-muted);
+  font-family: var(--font-mono); /* taste-skill-ignore: mono figure, the one mono job in the direction */
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 
-  .tc-head {
-    gap: 8px;
-  }
+.tc-insight {
+  margin-top: 9px;
+  padding-left: 11px;
+  border-left: 2px solid var(--card-accent);
+  font-size: 12px;
+  line-height: 1.55;
+}
 
-  .tc-since {
-    max-width: 78px;
-    font-size: 10px;
-  }
+/* ---------- close ---------- */
 
-  .card-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
+.tc-footer-note {
+  margin-top: 14px;
+  color: var(--card-muted);
+  font-size: 11px;
+}
 
-  .card-actions .btn {
-    width: 100%;
-  }
+.tc-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 11px;
+  border-top: 1px solid var(--card-rule);
+}
+
+.tc-footer span:first-child {
+  color: var(--card-muted);
+  font-size: 11px;
+}
+
+.tc-footer-mark {
+  color: var(--card-accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ---------- the empty slot: dashed and honest ---------- */
+
+.taste-card--empty {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  min-height: 380px;
+  padding: 28px 26px;
+  border: 1px dashed var(--control);
+  border-radius: 18px 18px 6px 18px;
+  background: transparent;
+  text-align: center;
+}
+
+.taste-card--empty p {
+  max-width: 30ch;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.slot-globe {
+  width: 30px;
+  height: 30px;
+  margin-bottom: 4px;
+  border: 1.5px solid var(--control);
+  border-radius: 50%;
+}
+
+.slot {
+  display: block;
+  border-radius: 3px;
+  background: var(--active);
+}
+
+.slot--name {
+  width: 148px;
+  height: 14px;
+}
+
+.slot--stat {
+  width: 212px;
+  height: 10px;
 }
