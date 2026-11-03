@@ -2,3 +2,10 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.log
+.taste-skill/inspect/
+.taste-skill/before*/
+.taste-skill/after*/
+.taste-skill/final*/
+*.jpg
+*.png
+!assets/logo/**/*.png

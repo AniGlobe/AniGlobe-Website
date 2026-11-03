@@ -132,8 +132,22 @@ function slotsCard(message, busy) {
     'div',
     attrs,
     el('div', { class: 'export-card-body' },
-      globeStamp('md'),
-      el('p', { style: { color: 'var(--muted)', fontSize: 'var(--fs-body)', textAlign: 'center', marginTop: 'var(--s4)' } }, message)
+      el('header', { class: 'export-card-header' },
+        el('h2', { class: 'export-card-title' }, 'AniManga Wrapped'),
+        globeStamp('sm')
+      ),
+      el('div', { class: 'export-identity' },
+        el('p', { class: 'export-name', style: { color: 'var(--faint)', fontSize: 'var(--fs-body)' } }, 'Your card appears here'),
+        el('p', { class: 'export-since' }, 'Enter a public MyAnimeList or AniList username to begin')
+      ),
+      el('div', { class: 'export-archetype', style: { marginTop: 'var(--s3)' } },
+        el('h3', { class: 'export-archetype-label' }, 'What you\'ll see'),
+        el('p', { class: 'export-archetype-blurb' }, 'Titles, episodes, watch time, mean score, frequent genres, top completed titles, favorites, and a standout rating: all in a single shareable card.')
+      ),
+      el('footer', { class: 'export-card-footer' },
+        el('span', {}, 'Profile data from MyAnimeList or AniList'),
+        el('span', { class: 'export-footer-mark' }, 'AniGlobe')
+      )
     )
   );
 }
