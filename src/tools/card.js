@@ -203,7 +203,7 @@ export default {
       required: true,
       'aria-describedby': 'wrapped-hint',
     });
-    const submit = el('button', { class: 'btn', type: 'submit' }, 'Build my wrap');
+    const submit = el('button', { class: 'btn btn-primary', type: 'submit' }, 'Build my wrap');
     const status = el('div', {
       class: 'status',
       role: 'status',

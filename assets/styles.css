@@ -450,9 +450,8 @@ a { color: inherit; text-decoration: none; }
   background: var(--text);
   color: var(--ground);
   border-color: transparent;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
-.btn-primary:hover:not(:disabled) { background: var(--muted); box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+.btn-primary:hover:not(:disabled) { background: var(--muted); }
 .btn-primary:active:not(:disabled) { transform: scale(0.95); }
 
 /* Stamp button — circular, for share/export */
@@ -943,12 +942,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 
 .wrapped-page {
   display: grid;
-  grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 380px) minmax(0, 480px);
   grid-template-areas:
     'heading heading'
     'form preview';
   gap: var(--s4);
   align-items: start;
+  justify-content: center;
 }
 
 .wrapped-page > .tool-head { grid-area: heading; margin-bottom: 0; }
