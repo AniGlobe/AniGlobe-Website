@@ -1,50 +1,63 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset=utf-8>
-<meta name=viewport content=width=device-width,initial-scale=1>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AniGlobe</title>
-<meta name="description" content="Make a shareable anime or manga wrap, then play the daily title-guessing game.">
+<meta name="description" content="Turn any public anime or manga profile into a shareable wrap card, then play the daily title-guessing game.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"> <!-- taste-skill-ignore: mono loads for figures and keys, the one mono job -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
-<a class="skip-link" href="#app">Skip to the tool</a>
+<a class="skip-link" href="#app">Skip to the app</a>
 
 <div class="site-layout">
-  <aside class="site-sidebar" aria-label="AniGlobe">
-    <a class="brand" id="brand" href="#/"></a>
-    <p class="sidebar-caption">Tools</p>
-    <nav class="site-nav" id="nav" aria-label="AniGlobe tools"></nav>
-    <div class="sidebar-foot">
-      <p>Works from public MyAnimeList and AniList profiles. Nothing you enter leaves this browser.</p>
+  <header class="topbar" role="banner">
+    <div class="topbar-inner">
+      <button class="btn-quiet sidebar-toggle" type="button" id="sidebar-toggle" aria-expanded="false" aria-controls="site-sidebar" aria-label="Open tools">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+
+      <a class="brand topbar-brand" href="#/" aria-label="AniGlobe, home">
+        <img src="assets/logo/AniGlobe/AniGlobe - PRIMARY LOGO TRANSPARENT.png" alt="" aria-hidden="true" width="500" height="500">
+      </a>
+
+      <div class="topbar-actions">
+        <button class="btn-quiet" type="button" aria-label="Search" style="display:none;">Search</button>
+      </div>
+    </div>
+  </header>
+
+  <aside class="site-sidebar" id="site-sidebar" role="navigation" aria-label="AniGlobe tools" data-state="closed">
+    <div class="sidebar-inner">
+      <a class="brand" href="#/" aria-label="AniGlobe, home">
+        <img src="assets/logo/AniGlobe/AniGlobe - GLOBE TRANSPARENT BACKGROUND.png" alt="" aria-hidden="true">
+        <span>AniGlobe</span>
+      </a>
+
+      <p class="sidebar-caption">Tools</p>
+
+      <nav class="site-nav" id="nav" aria-label="AniGlobe tools"></nav>
+
+      <div class="sidebar-foot">
+        <p>Works from public MyAnimeList and AniList profiles. Nothing you enter leaves this browser.</p>
+      </div>
     </div>
   </aside>
 
-  <div class="sheet">
-    <header class="mobile-header">
-      <a class="brand" id="mobile-brand" href="#/"></a>
-      <button class="nav-toggle" id="nav-toggle" type="button" aria-expanded="false" aria-controls="mobile-nav-dialog">
-        <span class="nav-toggle-mark" aria-hidden="true"></span>
-        <span>Tools</span>
-      </button>
-      <dialog class="nav-dialog" id="mobile-nav-dialog" aria-labelledby="mobile-nav-title">
-        <div class="nav-dialog-head">
-          <h2 id="mobile-nav-title">Tools</h2>
-          <button class="nav-close" id="nav-close" type="button">Close</button>
-        </div>
-        <nav class="mobile-nav" id="mobile-nav" aria-label="AniGlobe tools"></nav>
-      </dialog>
-    </header>
+  <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
 
-    <main class="app" id="app" tabindex="-1"></main>
+  <main class="sheet" id="app" tabindex="-1" role="main"></main>
 
-    <footer class="site-footer">
-      <div class="footer-inner" id="footer"></div>
-    </footer>
-  </div>
+  <footer class="site-footer" role="contentinfo">
+    <div class="footer-inner" id="footer"></div>
+  </footer>
 </div>
 
 <noscript>

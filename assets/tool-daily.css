@@ -1,11 +1,11 @@
 /* Anime Guess and Manga Guess. Framed-sheet inside the sheet: a facts strip on
-   top, the clue route left, the play well right, the result ticket below. No
-   elevation: the board is a hairline panel, the well is one tone step. */
+   top, the clue route left, the play well right, the result ticket below.
+   Dark mode: elevation is a lightness step alone, no shadows at rest. */
 
 .daily-panel {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);
-  gap: 16px;
+  gap: var(--s3);
 }
 
 .daily-panel > * {
@@ -18,34 +18,33 @@
 
 .daily-board {
   grid-column: 1;
-  padding: 18px 20px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
+  padding: var(--s4);
+  border-radius: var(--radius-card);
   background: var(--surface);
 }
 
 .daily-board-title {
-  margin-bottom: 8px;
-  font-size: 16px;
+  margin-bottom: var(--s3);
+  font-size: var(--fs-section);
   font-weight: 600;
   letter-spacing: -0.01em;
+  color: var(--text);
 }
 
 .daily-side {
   grid-column: 2;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 20px 20px;
-  border-radius: 10px;
+  gap: var(--s4);
+  padding: var(--s4);
+  border-radius: var(--radius-card);
   background: var(--raised);
 }
 
 .daily-result {
   grid-column: 1 / -1;
-  padding: 18px 20px 20px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
+  padding: var(--s4);
+  border-radius: var(--radius-card);
   background: var(--surface);
 }
 
@@ -55,8 +54,8 @@
 }
 
 .daily-loading {
-  padding: 14px 16px;
-  border-radius: var(--r-md);
+  padding: var(--s3) var(--s4);
+  border-radius: var(--radius-card);
   background: var(--raised);
   color: var(--muted);
   font-size: 13px;
@@ -65,16 +64,16 @@
 .daily-empty {
   display: grid;
   justify-items: start;
-  gap: 12px;
-  padding: 18px 20px 20px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
+  gap: var(--s3);
+  padding: var(--s4);
+  border-radius: var(--radius-card);
+  background: var(--raised);
 }
 
 .daily-empty p {
   max-width: 60ch;
   color: var(--muted);
-  font-size: 14px;
+  font-size: var(--fs-body);
   line-height: 1.5;
 }
 
@@ -90,18 +89,18 @@
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 12px;
+  column-gap: var(--s3);
   min-height: 56px;
-  padding: 8px 14px;
-  border-radius: var(--r-md);
+  padding: var(--s2) var(--s4);
+  border-radius: var(--radius-card);
+  background: transparent;
 }
 
 .daily-clue--current {
-  background: var(--active);
+  background: var(--raised);
 }
 
-/* The rail between stamps: dashed while closed, a walked line once revealed.
-   It stops short of the current station so the fill stays whole. */
+/* The rail between stamps: dashed while closed, a walked line once revealed. */
 .daily-clue:not(:last-child)::before {
   content: '';
   position: absolute;
@@ -119,7 +118,7 @@
   justify-self: center;
   width: 9px;
   height: 9px;
-  border: 1.5px solid var(--control);
+  border: 1.5px solid var(--border);
   border-radius: 50%;
   background: transparent;
 }
@@ -130,7 +129,7 @@
 }
 
 .daily-clue--current .daily-clue-stamp {
-  outline: 4px solid var(--accent-wash);
+  outline: 4px solid rgba(59, 130, 246, 0.3);
   outline-offset: 3px;
 }
 
@@ -164,10 +163,10 @@
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 12px;
-  border-top: 1px solid var(--rule);
+  gap: var(--s2);
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border);
 }
 
 .daily-guesses-label {
@@ -185,10 +184,10 @@
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  padding: 3px 9px;
+  padding: 3px var(--s3);
   border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background: var(--raised);
+  border-radius: var(--radius-control);
+  background: var(--surface);
   color: var(--muted);
   font-size: 13px;
   overflow: hidden;
@@ -201,7 +200,7 @@
 .daily-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: var(--s2);
 }
 
 /* In a narrow well the drop-in button takes the line it fell on. */
@@ -211,27 +210,27 @@
 
 .daily-rules {
   margin-top: auto;
-  padding-top: 14px;
+  padding-top: var(--s3);
   border-top: 1px solid var(--border);
 }
 
 .daily-rules-title {
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--fs-small);
   font-weight: 600;
 }
 
 .daily-rules ul {
   display: grid;
-  gap: 6px;
-  margin: 9px 0 0;
+  gap: var(--s2);
+  margin: var(--s3) 0 0;
   padding: 0;
   list-style: none;
 }
 
 .daily-rules li {
   position: relative;
-  padding-left: 13px;
+  padding-left: var(--s3);
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
@@ -252,16 +251,17 @@
 
 .daily-result-head {
   display: grid;
-  gap: 3px;
+  gap: var(--s1);
 }
 
 .daily-result-title {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--s3);
   font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  color: var(--text);
 }
 
 .daily-result-title::before {
@@ -270,7 +270,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--faint);
 }
 
 .daily-result[data-tone='win'] .daily-result-title::before {
@@ -287,20 +287,19 @@
 }
 
 .daily-share {
-  margin: 14px 0 0;
-  padding: 12px 14px;
-  border-radius: var(--r-sm);
+  margin: var(--s4) 0 0;
+  padding: var(--s3) var(--s4);
+  border-radius: var(--radius-control);
   background: var(--raised);
   color: var(--text);
-  font-family: var(--font-mono); /* taste-skill-ignore: the share ticket keeps its figures in mono */
-  font-size: 12px;
+  font-size: var(--fs-small);
   line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .daily-result .btn {
-  margin-top: 12px;
+  margin-top: var(--s3);
 }
 
 /* ---------- the score drop, once ---------- */
@@ -340,7 +339,7 @@
 
 @media (max-width: 440px) {
   .daily-panel .kpi {
-    padding-inline: 14px;
+    padding-inline: var(--s4);
   }
 
   .daily-actions {

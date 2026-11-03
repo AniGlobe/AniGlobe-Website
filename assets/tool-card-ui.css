@@ -1,43 +1,36 @@
-/* The exported AniManga Wrapped card: a field-note sheet. Paper tint and hair
-   rules carry the theme; the clipped corner (6px at bottom right) is the page's
-   signature. Everything here also has to survive a PNG export, so the look
-   stays typography and plain shapes only. */
+/* The exported AniManga Wrapped card: typography-only field note. Flat colour
+   and clipped corners carry the theme; no borders, no shadows — elevation is
+   a lightness step. PNG-safe: read --card-bg for the export background. */
 
 .taste-card {
-  --card-bg: #eef7f6;
-  --card-ink: #132225;
-  --card-muted: #4f6660;
-  --card-rule: #d9e7e4;
-  --card-edge: #cfe0dc;
-  --card-accent: #1b6c80;
-  --card-bar: #1b6c80;
+  --card-bg: #0a0a0a;
+  --card-ink: #e5e5e5;
+  --card-muted: #9aa39a;
+  --card-rule: #1a1a1a;
+  --card-accent: #3b82f6; /* taste-skill-ignore: brand blue from the AniGlobe logo */
+  --card-bar: #3b82f6; /* taste-skill-ignore: brand blue from the AniGlobe logo */
 
   position: relative;
   width: min(100%, 440px);
   padding: 24px 24px 18px;
-  border: 1px solid var(--card-edge);
-  border-radius: 18px 18px 6px 18px;
+  border-radius: var(--radius-card);
   background: var(--card-bg);
   color: var(--card-ink);
   font-family: var(--font-sans);
 }
 
 .taste-card[data-theme='coast'] {
-  --card-bg: #e8f1f8;
-  --card-ink: #12283c;
-  --card-muted: #4d6478;
-  --card-rule: #d2e2f0;
-  --card-edge: #c5dbec;
+  --card-bg: #0b1026;
+  --card-ink: #d9e2f2;
+  --card-muted: #8fa1c8;
+  --card-rule: #16203e;
 }
 
 .taste-card[data-theme='night'] {
-  --card-bg: #17303a;
-  --card-ink: #edf6f9;
-  --card-muted: #9db7bf;
-  --card-rule: #2c4d59;
-  --card-edge: #26495a;
-  --card-accent: #62c9da;
-  --card-bar: #62c9da;
+  --card-bg: #000000;
+  --card-ink: #ffffff;
+  --card-muted: #9aa39a;
+  --card-rule: #1a1a1a;
 }
 
 /* ---------- head: name, tenure and the stamped globe ---------- */
@@ -46,7 +39,7 @@
   position: relative;
   display: grid;
   justify-items: start;
-  gap: 3px;
+  gap: var(--s1);
   padding-right: 52px;
 }
 
@@ -64,7 +57,7 @@
 
 .tc-since {
   color: var(--card-muted);
-  font-size: 12px;
+  font-size: var(--fs-small);
 }
 
 .tc-globe {
@@ -73,8 +66,8 @@
   right: 0;
   width: 34px;
   height: 34px;
-  border: 1.5px solid var(--card-accent);
   border-radius: 50%;
+  background: var(--card-accent);
   opacity: 0.9;
 }
 
@@ -83,36 +76,36 @@
   position: absolute;
   inset: 13px;
   border-radius: 50%;
-  background: var(--card-accent);
+  background: var(--card-bg);
 }
 
 .tc-globe::after {
   content: '';
   position: absolute;
   inset: 0;
-  border: 1px solid var(--card-accent);
   border-radius: 50%;
   transform: scale(0.44, 1);
+  background: var(--card-bg);
 }
 
 /* ---------- the taste note ---------- */
 
 .tc-archetype {
-  margin-top: 18px;
-  padding-left: 11px;
+  margin-top: var(--s4);
+  padding-left: var(--s3);
   border-left: 2px solid var(--card-accent);
 }
 
 .tc-archetype-label {
-  font-size: 13px;
+  font-size: var(--fs-small);
   font-weight: 600;
   line-height: 1.3;
 }
 
 .tc-archetype-blurb {
-  margin-top: 3px;
+  margin-top: var(--s1);
   color: var(--card-muted);
-  font-size: 12px;
+  font-size: var(--fs-small);
   line-height: 1.55;
 }
 
@@ -121,8 +114,8 @@
 .tc-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 18px;
-  padding-top: 14px;
+  margin-top: var(--s4);
+  padding-top: var(--s3);
   border-top: 1px solid var(--card-rule);
 }
 
@@ -131,41 +124,41 @@
 }
 
 .tc-stat + .tc-stat {
-  padding-left: 12px;
+  padding-left: var(--s3);
   border-left: 1px solid var(--card-rule);
 }
 
 .tc-stat-label {
   color: var(--card-muted);
-  font-size: 11px;
+  font-size: var(--fs-small);
 }
 
 .tc-stat-value {
-  margin-top: 4px;
-  font-family: var(--font-mono); /* taste-skill-ignore: card figures, the one mono job in the direction */
+  margin-top: var(--s1);
   font-size: 14px;
   font-weight: 500;
   line-height: 1.35;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
 /* ---------- sections ---------- */
 
 .tc-section {
-  margin-top: 18px;
+  margin-top: var(--s4);
 }
 
 .tc-section-title {
   color: var(--card-muted);
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-weight: 600;
 }
 
 .tc-genre-list,
 .tc-title-list {
   display: grid;
-  gap: 2px;
-  margin: 9px 0 0;
+  gap: var(--s1);
+  margin: var(--s3) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -174,7 +167,7 @@
   display: grid;
   grid-template-columns: minmax(0, 96px) minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 10px;
+  column-gap: var(--s3);
   min-height: 26px;
 }
 
@@ -202,8 +195,7 @@
 
 .tc-genre-count {
   color: var(--card-muted);
-  font-family: var(--font-mono); /* taste-skill-ignore: mono figure, the one mono job in the direction */
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-variant-numeric: tabular-nums;
 }
 
@@ -212,14 +204,13 @@
 .tc-title-row {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--s3);
   min-height: 28px;
 }
 
 .tc-title-rank {
   color: var(--card-muted);
-  font-family: var(--font-mono); /* taste-skill-ignore: mono figure, the one mono job in the direction */
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-variant-numeric: tabular-nums;
 }
 
@@ -236,23 +227,22 @@
 
 .tc-title-score {
   color: var(--card-muted);
-  font-family: var(--font-mono); /* taste-skill-ignore: mono figure, the one mono job in the direction */
-  font-size: 12px;
+  font-size: var(--fs-small);
   font-variant-numeric: tabular-nums;
 }
 
 .tc-insight {
-  margin-top: 9px;
-  padding-left: 11px;
+  margin-top: var(--s2);
+  padding-left: var(--s3);
   border-left: 2px solid var(--card-accent);
-  font-size: 12px;
+  font-size: var(--fs-small);
   line-height: 1.55;
 }
 
 /* ---------- close ---------- */
 
 .tc-footer-note {
-  margin-top: 14px;
+  margin-top: var(--s3);
   color: var(--card-muted);
   font-size: 11px;
 }
@@ -261,9 +251,9 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 16px;
-  padding-top: 11px;
+  gap: var(--s3);
+  margin-top: var(--s4);
+  padding-top: var(--s2);
   border-top: 1px solid var(--card-rule);
 }
 
@@ -278,17 +268,15 @@
   font-weight: 600;
 }
 
-/* ---------- the empty slot: dashed and honest ---------- */
-
 .taste-card--empty {
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: 12px;
+  gap: var(--s3);
   min-height: 380px;
-  padding: 28px 26px;
+  padding: var(--s5) var(--s4);
   border: 1px dashed var(--control);
-  border-radius: 18px 18px 6px 18px;
+  border-radius: var(--radius-card);
   background: transparent;
   text-align: center;
 }
@@ -296,7 +284,7 @@
 .taste-card--empty p {
   max-width: 30ch;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--fs-small);
   line-height: 1.55;
 }
 
@@ -311,7 +299,7 @@
 .slot {
   display: block;
   border-radius: 3px;
-  background: var(--active);
+  background: var(--surface);
 }
 
 .slot--name {
@@ -322,4 +310,11 @@
 .slot--stat {
   width: 212px;
   height: 10px;
+}
+
+/* ---------- loading variant ---------- */
+
+.taste-card--loading {
+  pointer-events: none;
+  opacity: 0.6;
 }

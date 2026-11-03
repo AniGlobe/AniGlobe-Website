@@ -41,12 +41,6 @@ function savedPreferences() {
 /**
  * A segmented radio group exposed with the old select-style interface:
  * `control.node` for rendering and events, `control.value` to read/write.
- *
- * @param {string} idPrefix used for the radio ids and the group label id
- * @param {string} name shared radio name, which makes the group a radio group
- * @param {string} labelText visible group label
- * @param {{value: string, label: string}[]} options
- * @param {string} preferred checked option
  */
 function pickControl(idPrefix, name, labelText, options, preferred) {
   const groupLabel = el('span', { class: 'pick-label', id: idPrefix + '-label' }, labelText);
@@ -122,12 +116,13 @@ function swatchControl(preferred) {
 }
 
 /**
- * The empty stage: a dashed slot with grey placeholder bars and one honest
- * sentence. `busy` marks it as the loading state while a profile is fetched.
+ * The empty stage: a clean slot with honest placeholder and one sentence.
+ * `busy` marks it as the loading state while a profile is fetched.
  */
 function slotsCard(message, busy) {
   const attrs = {
-    class: 'taste-card taste-card--empty' + (busy ? ' taste-card--loading' : ''),
+    class: 'export-card export-card--empty' + (busy ? ' export-card--loading' : ''),
+    style: { '--card-bg': '#111111' },
   };
   if (busy) {
     attrs.role = 'status';
@@ -136,10 +131,10 @@ function slotsCard(message, busy) {
   return el(
     'div',
     attrs,
-    el('span', { class: 'slot-globe', 'aria-hidden': 'true' }),
-    el('span', { class: 'slot slot--name', 'aria-hidden': 'true' }),
-    el('span', { class: 'slot slot--stat', 'aria-hidden': 'true' }),
-    el('p', {}, message)
+    el('div', { class: 'export-card-body' },
+      globeStamp('md'),
+      el('p', { style: { color: 'var(--muted)', fontSize: 'var(--fs-body)', textAlign: 'center', marginTop: 'var(--s4)' } }, message)
+    )
   );
 }
 
@@ -147,6 +142,11 @@ function checkOption(id, label, checked) {
   const input = el('input', { type: 'checkbox', id, name: id });
   input.checked = checked;
   return el('label', { class: 'check', for: id }, input, el('span', {}, label));
+}
+
+function globeStamp(size = 'md') {
+  const cls = 'globe-stamp';
+  return el('div', { class: cls + (size !== 'md' ? ' ' + cls + '-' + size : ''), 'aria-hidden': 'true' });
 }
 
 export default {
@@ -164,10 +164,7 @@ export default {
       'wrapped-source',
       'source',
       'List service',
-      providers.map((provider) => ({
-        value: provider.id,
-        label: provider.shortLabel || provider.label,
-      })),
+      providers.map((provider) => ({ value: provider.id, label: provider.shortLabel || provider.label })),
       preferences.source
     );
     const mediaPick = pickControl(
@@ -295,7 +292,7 @@ export default {
         ? 'MyAnimeList username'
         : 'AniList username';
       username.maxLength = provider.id === 'mal' ? 16 : 32;
-      usernameLabel.textContent = (provider.shortLabel || provider.label) + ' username';
+      usernameLabel.textContent = provider.label + ' username';
       username.autocomplete = 'username';
       submit.textContent = 'Build my ' + media.label.toLowerCase() + ' wrap';
     }

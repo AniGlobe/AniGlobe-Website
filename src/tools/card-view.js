@@ -22,43 +22,43 @@ function genreRow(genre, maximum) {
     : 0;
   const track = el(
     'span',
-    { class: 'tc-genre-track', role: 'img', 'aria-label': genre.name + ': ' + genre.count + ' titles' },
-    el('span', { class: 'tc-genre-fill', style: { width: percentage + '%' }, 'aria-hidden': 'true' })
+    { class: 'export-genre-track', role: 'img', 'aria-label': genre.name + ': ' + genre.count + ' titles' },
+    el('span', { class: 'export-genre-fill', style: { width: percentage + '%' }, 'aria-hidden': 'true' })
   );
 
   return el(
     'li',
-    { class: 'tc-genre' },
-    el('span', { class: 'tc-genre-name' }, genre.name),
+    { class: 'export-genre' },
+    el('span', { class: 'export-genre-name' }, genre.name),
     track,
-    el('span', { class: 'tc-genre-count' }, displayNumber(genre.count))
+    el('span', { class: 'export-genre-count num' }, displayNumber(genre.count))
   );
 }
 
 function titleRow(entry, index) {
   return el(
     'li',
-    { class: 'tc-title-row' },
-    el('span', { class: 'tc-title-rank', 'aria-hidden': 'true' }, String(index + 1)),
-    el('span', { class: 'tc-title-name' }, entry.title),
-    el('span', { class: 'tc-title-score' }, entry.score + '/10')
+    { class: 'export-title-row' },
+    el('span', { class: 'export-title-rank', 'aria-hidden': 'true' }, String(index + 1)),
+    el('span', { class: 'export-title-name' }, entry.title),
+    el('span', { class: 'export-title-score num' }, entry.score + '/10')
   );
 }
 
 function favoriteRow(entry, index) {
   return el(
     'li',
-    { class: 'tc-title-row' },
-    el('span', { class: 'tc-title-rank', 'aria-hidden': 'true' }, String(index + 1)),
-    el('span', { class: 'tc-title-name' }, entry.title)
+    { class: 'export-title-row' },
+    el('span', { class: 'export-title-rank', 'aria-hidden': 'true' }, String(index + 1)),
+    el('span', { class: 'export-title-name' }, entry.title)
   );
 }
 
 function section(title, content) {
   return el(
     'section',
-    { class: 'tc-section' },
-    el('h3', { class: 'tc-section-title' }, title),
+    { class: 'export-section' },
+    el('h3', { class: 'export-section-title' }, title),
     content
   );
 }
@@ -81,6 +81,11 @@ function timeStat(profile, media) {
   return { label: 'Hours watched', value: displayNumber(profile.hours) };
 }
 
+function globeStamp(size = 'md') {
+  const cls = 'globe-stamp';
+  return el('div', { class: cls + (size !== 'md' ? ' ' + cls + '-' + size : ''), 'aria-hidden': 'true' });
+}
+
 export function renderCard(profile, options) {
   const prefs = cardOptions(options);
   const media = resolveMediaType(profile.mediaType);
@@ -97,9 +102,17 @@ export function renderCard(profile, options) {
     : { label: 'Chapters', value: displayNumber(profile.chapters) };
   const time = timeStat(profile, media);
 
+  // Palette backgrounds
+  const palettes = {
+    atlas: { bg: '#eef7f6', text: '#131416' },
+    coast: { bg: '#e8f1f8', text: '#131416' },
+    night: { bg: '#17303a', text: '#ffffff' },
+  };
+  const palette = palettes[prefs.theme] || palettes.atlas;
+
   const stats = el(
     'dl',
-    { class: 'tc-stats' },
+    { class: 'export-stats' },
     ...[
       { label: 'Titles', value: displayNumber(profile.count) },
       activity,
@@ -108,9 +121,9 @@ export function renderCard(profile, options) {
     ].map((stat) =>
       el(
         'div',
-        { class: 'tc-stat' },
-        el('dt', { class: 'tc-stat-label' }, stat.label),
-        el('dd', { class: 'tc-stat-value' }, stat.value)
+        { class: 'export-stat' },
+        el('dt', { class: 'export-stat-label' }, stat.label),
+        el('dd', { class: 'export-stat-value num' }, stat.value)
       )
     )
   );
@@ -118,85 +131,84 @@ export function renderCard(profile, options) {
   return el(
     'article',
     {
-      class: 'taste-card',
-      dataset: { theme: prefs.theme },
+      class: 'export-card',
+      style: { '--card-bg': palette.bg, color: palette.text },
       'aria-label': media.label + ' Wrapped for ' + profile.name,
     },
     el(
       'header',
-      { class: 'tc-head' },
+      { class: 'export-card-header' },
+      el('h2', { class: 'export-card-title' }, media.label + ' Wrapped'),
+      globeStamp('sm')
+    ),
+    el(
+      'div',
+      { class: 'export-card-body' },
       el(
         'div',
-        { class: 'tc-identity' },
-        profile.url
-          ? el(
-              'h2',
-              { class: 'tc-name' },
-              el('a', { href: profile.url, target: '_blank', rel: 'noopener noreferrer' }, profile.name)
-            )
-          : el('h2', { class: 'tc-name' }, profile.name)
+        { class: 'export-identity' },
+        el('p', { class: 'export-name' }, profile.name),
+        profile.memberSince
+          ? el('p', { class: 'export-since' }, profile.source + ' since ' + profile.memberSince)
+          : null,
       ),
-      profile.memberSince
-        ? el('p', { class: 'tc-since' }, profile.source + ' since ' + profile.memberSince)
+      prefs.showInsight
+        ? el(
+            'div',
+            { class: 'export-archetype' },
+            el('h3', { class: 'export-archetype-label' }, taste.label),
+            el('p', { class: 'export-archetype-blurb' }, taste.blurb)
+          )
         : null,
-      el('span', { class: 'tc-globe', 'aria-hidden': 'true' })
-    ),
-    prefs.showInsight
-      ? el(
-          'section',
-          { class: 'tc-archetype' },
-          el('h3', { class: 'tc-archetype-label' }, taste.label),
-          el('p', { class: 'tc-archetype-blurb' }, taste.blurb)
-        )
-      : null,
-    stats,
-    genres.length
-      ? section(
-          'Frequent genres',
-          el('ul', { class: 'tc-genre-list' }, genres.map((genre) => genreRow(genre, genreMaximum)))
-        )
-      : null,
-    highestRated.length
-      ? section(
-          'Top completed titles',
-          el('ol', { class: 'tc-title-list' }, highestRated.map((entry, index) => titleRow(entry, index)))
-        )
-      : null,
-    favorites.length
-      ? section(
-          'Favorite ' + media.plural,
-          el(
-            'ol',
-            { class: 'tc-title-list' },
-            favorites.map((entry, index) => favoriteRow(entry, index))
+      stats,
+      genres.length
+        ? section(
+            'Frequent genres',
+            el('ul', { class: 'export-genre-list' }, genres.map((genre) => genreRow(genre, genreMaximum)))
           )
-        )
-      : null,
-    signature && prefs.showInsight
-      ? section(
-          'Standout rating',
-          el(
-            'p',
-            { class: 'tc-insight' },
-            signature.title,
-            signatureGap === 0
-              ? ' is rated in line with its AniList average.'
-              : ' is rated ' +
-                Math.abs(signatureGap) +
-                ' points ' +
-                (signatureGap > 0 ? 'above' : 'below') +
-                ' its AniList average.'
+        : null,
+      highestRated.length
+        ? section(
+            'Top completed titles',
+            el('ol', { class: 'export-title-list' }, highestRated.map((entry, index) => titleRow(entry, index)))
           )
-        )
-      : null,
-    deviation !== null && prefs.showInsight
-      ? el('p', { class: 'tc-footer-note' }, 'Average gap from AniList scores: ' + deviation + ' points')
-      : null,
-    el(
-      'footer',
-      { class: 'tc-footer' },
-      el('span', {}, profile.source + ' profile summary'),
-      el('span', { class: 'tc-footer-mark' }, 'AniGlobe')
+        : null,
+      favorites.length
+        ? section(
+            'Favorite ' + media.plural,
+            el(
+              'ol',
+              { class: 'export-title-list' },
+              favorites.map((entry, index) => favoriteRow(entry, index))
+            )
+          )
+        : null,
+      signature && prefs.showInsight
+        ? section(
+            'Standout rating',
+            el(
+              'p',
+              { class: 'export-insight' },
+              signature.title,
+              signatureGap === 0
+                ? ' is rated in line with its AniList average.'
+                : ' is rated ' +
+                  Math.abs(signatureGap) +
+                  ' points ' +
+                  (signatureGap > 0 ? 'above' : 'below') +
+                  ' its AniList average.'
+            )
+          )
+        : null,
+      deviation !== null && prefs.showInsight
+        ? el('p', { class: 'export-footer-note' }, 'Average gap from AniList scores: ' + deviation + ' points')
+        : null,
+      el(
+        'footer',
+        { class: 'export-card-footer' },
+        el('span', {}, profile.source + ' profile summary'),
+        el('span', { class: 'export-footer-mark' }, 'AniGlobe')
+      )
     )
   );
 }

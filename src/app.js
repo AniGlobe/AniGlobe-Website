@@ -10,13 +10,11 @@ import { site, tools, resolveToolId, defaultToolId } from './config.js';
 import { el, render } from './lib.js';
 
 const dom = {
-  brand: document.getElementById('brand'),
-  mobileBrand: document.getElementById('mobile-brand'),
+  topbarBrand: document.querySelector('.topbar-brand'),
+  sidebar: document.getElementById('site-sidebar'),
+  sidebarBackdrop: document.getElementById('sidebar-backdrop'),
+  sidebarToggle: document.getElementById('sidebar-toggle'),
   nav: document.getElementById('nav'),
-  mobileNav: document.getElementById('mobile-nav'),
-  navToggle: document.getElementById('nav-toggle'),
-  navDialog: document.getElementById('mobile-nav-dialog'),
-  navClose: document.getElementById('nav-close'),
   app: document.getElementById('app'),
   footer: document.getElementById('footer'),
 };
@@ -25,78 +23,10 @@ let cleanupCurrent = null;
 let mountToken = 0;
 let bootstrapped = false;
 
-/** Create an SVG element in the SVG namespace. */
-function svg(tag, attrs = {}) {
-  const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    node.setAttribute(key, value);
-  }
-  return node;
-}
-
-/**
- * The brand mark: a globe drawn with one continuous stroke. It sits on the
- * sidebar, the mobile header, and rotates a step when the wordmark is
- * hovered, so the identity answers the pointer.
- */
-function brandMark() {
-  const icon = svg('svg', {
-    class: 'brand-mark',
-    viewBox: '0 0 24 24',
-    width: '21',
-    height: '21',
-    fill: 'none',
-    'aria-hidden': 'true',
-  });
-  icon.append(
-    svg('circle', { cx: '12', cy: '12', r: '9.4', stroke: 'currentColor', 'stroke-width': '1.7' }),
-    svg('ellipse', { cx: '12', cy: '12', rx: '4.4', ry: '9.4', stroke: 'currentColor', 'stroke-width': '1.3' }),
-    svg('path', { d: 'M2.6 12h18.8', stroke: 'currentColor', 'stroke-width': '1.3' })
-  );
-  return icon;
-}
-
-/**
- * Tool icons: drawn for these three tools (a wrap card, a film frame, an
- * open book) rather than taken from a shared library look.
- */
-const TOOL_ICONS = {
-  card() {
-    const icon = svg('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' });
-    icon.append(
-      svg('rect', { x: '2.2', y: '2.6', width: '11.6', height: '10.8', rx: '1.6' }),
-      svg('path', { d: 'M5.3 5.9h5.4M5.3 8.3h3.4' })
-    );
-    return icon;
-  },
-  film() {
-    const icon = svg('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' });
-    icon.append(
-      svg('rect', { x: '2.2', y: '3.6', width: '11.6', height: '8.8', rx: '1.6' }),
-      svg('path', { d: 'M5.4 3.6v8.8M10.6 3.6v8.8' })
-    );
-    return icon;
-  },
-  book() {
-    const icon = svg('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' });
-    icon.append(
-      svg('path', { d: 'M8 4.4C6.6 3.5 4.7 3.4 3.2 3.5v9c1.5-.1 3.4 0 4.8.9 1.4-.9 3.3-1 4.8-.9v-9C11.3 3.4 9.4 3.5 8 4.4Z' }),
-      svg('path', { d: 'M8 4.9v8.4' })
-    );
-    return icon;
-  },
-};
-
-function iconFor(toolId) {
-  if (toolId === 'card') return TOOL_ICONS.card();
-  if (toolId === 'daily') return TOOL_ICONS.film();
-  return TOOL_ICONS.book();
-}
-
 function renderBrand() {
-  for (const brand of [dom.brand, dom.mobileBrand]) {
-    render(brand, brandMark(), el('span', {}, site.name));
-    brand.setAttribute('aria-label', site.name + ', home');
+  // Topbar brand already in HTML; ensure aria
+  if (dom.topbarBrand) {
+    dom.topbarBrand.setAttribute('aria-label', site.name + ', home');
   }
 }
 
@@ -106,13 +36,11 @@ function renderNav() {
       el(
         'a',
         { class: 'nav-link', href: '#/' + tool.id, dataset: { tool: tool.id } },
-        iconFor(tool.id),
         el('span', {}, tool.label)
       )
     );
 
   render(dom.nav, links());
-  render(dom.mobileNav, links());
 }
 
 function renderFooter() {
@@ -161,11 +89,15 @@ function renderFooter() {
 }
 
 function markActiveNav(toolId) {
-  for (const nav of [dom.nav, dom.mobileNav]) {
-    for (const link of nav.querySelectorAll('.nav-link')) {
-      if (link.dataset.tool === toolId) link.setAttribute('aria-current', 'page');
-      else link.removeAttribute('aria-current');
-    }
+  // Mark active in sidebar
+  for (const link of dom.nav.querySelectorAll('.nav-link')) {
+    if (link.dataset.tool === toolId) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+  // Mark active in topbar (if present)
+  for (const link of document.querySelectorAll('.topbar-link')) {
+    if (link.dataset.tool === toolId) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
   }
 }
 
@@ -184,7 +116,7 @@ function renderFailure(message) {
       el(
         'p',
         { style: { marginTop: '16px' } },
-        el('a', { class: 'btn', href: '#/' + defaultToolId }, 'Back to AniManga Wrapped')
+        el('a', { class: 'btn btn-primary', href: '#/' + defaultToolId }, 'Back to AniManga Wrapped')
       )
     )
   );
@@ -244,10 +176,26 @@ async function mountRoute() {
   }
   bootstrapped = true;
   window.scrollTo({ top: 0, behavior: 'auto' });
+
+  // Close sidebar on navigation (mobile)
+  closeSidebar();
 }
 
 function onHashChange() {
   mountRoute();
+}
+
+function toggleSidebar() {
+  const isOpen = dom.sidebar.getAttribute('data-state') === 'open';
+  dom.sidebar.setAttribute('data-state', isOpen ? 'closed' : 'open');
+  dom.sidebarBackdrop.setAttribute('data-visible', isOpen ? 'false' : 'true');
+  dom.sidebarToggle.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+}
+
+function closeSidebar() {
+  dom.sidebar.setAttribute('data-state', 'closed');
+  dom.sidebarBackdrop.setAttribute('data-visible', 'false');
+  dom.sidebarToggle.setAttribute('aria-expanded', 'false');
 }
 
 function start() {
@@ -255,49 +203,28 @@ function start() {
   renderNav();
   renderFooter();
 
-  let dialogOpen = false;
+  // Sidebar toggle
+  dom.sidebarToggle.addEventListener('click', toggleSidebar);
+  dom.sidebarBackdrop.addEventListener('click', closeSidebar);
 
-  dom.navToggle.addEventListener('click', () => {
-    dom.navDialog.showModal();
-    dom.navToggle.setAttribute('aria-expanded', 'true');
-    dom.navDialog.focus();
-    dialogOpen = true;
-  });
-  dom.navClose.addEventListener('click', () => {
-    dom.navDialog.close();
-    dialogOpen = false;
-  });
-  dom.navDialog.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      dom.navDialog.close();
-      dialogOpen = false;
-    }
-  });
-  // Also catch Escape on the document when the dialog is open
+  // Close sidebar on Escape
   document.addEventListener('keydown', (event) => {
-    if (dialogOpen && event.key === 'Escape') {
-      event.preventDefault();
-      dom.navDialog.close();
-      dialogOpen = false;
+    if (event.key === 'Escape') {
+      closeSidebar();
     }
   });
-  dom.navDialog.addEventListener('close', () => {
-    dom.navToggle.setAttribute('aria-expanded', 'false');
-    dialogOpen = false;
-  });
-  dom.mobileNav.addEventListener('click', (event) => {
+
+  // Close sidebar when clicking a nav link
+  dom.nav.addEventListener('click', (event) => {
     if (event.target.closest('a')) {
-      dom.navDialog.close();
-      dialogOpen = false;
+      closeSidebar();
     }
   });
-  dom.navDialog.addEventListener('click', (event) => {
-    if (event.target === dom.navDialog) {
-      dom.navDialog.close();
-      dialogOpen = false;
-    }
-  });
+
+  // Prevent scroll restoration on navigation
+  if ('scrollRestoration' in history) {
+    history.scrollRestoration = 'manual';
+  }
 
   if (!window.location.hash) {
     window.location.replace('#/' + defaultToolId);
