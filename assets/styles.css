@@ -336,7 +336,8 @@ a { color: inherit; text-decoration: none; }
   border-radius: var(--radius-card);
   padding: var(--s5);
   min-width: 0;
-  border: none;
+  border: 1px solid var(--border);
+  position: relative;
 }
 
 .well {
@@ -1035,6 +1036,21 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .text-right { text-align: right; }
 .mt-1 { margin-top: var(--s1); } .mt-2 { margin-top: var(--s2); } .mt-3 { margin-top: var(--s3); } .mt-4 { margin-top: var(--s4); } .mt-5 { margin-top: var(--s5); }
 .mb-1 { margin-bottom: var(--s1); } .mb-2 { margin-bottom: var(--s2); } .mb-3 { margin-bottom: var(--s3); } .mb-4 { margin-bottom: var(--s4); } .mb-5 { margin-bottom: var(--s5); }
+
+/* Hero accent field — fills the void with flat colour */
+.hero-accent {
+  position: absolute;
+  top: var(--s4);
+  right: var(--s4);
+  width: 320px;
+  height: 320px;
+  background: var(--accent);
+  border-radius: 50%;
+  opacity: 0.05;
+  filter: blur(48px);
+  pointer-events: none;
+  z-index: -1;
+}
 
 /* ========================================================================
    HERO MOTION — globe entrance animation

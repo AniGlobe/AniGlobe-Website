@@ -265,7 +265,8 @@ export default {
           { class: 'tool-head wrapped-heading', style: { marginBottom: 'var(--s6)' } },
           el('div', { class: 'flex items-center justify-between gap-3', style: { marginBottom: 'var(--s3)', paddingInline: 'var(--s4)' } }, [
             el('h1', { class: 'slide-in-left', style: { paddingLeft: 'var(--s2)' } }, 'AniManga Wrapped'),
-            heroStamp
+            heroStamp,
+            el('div', { class: 'hero-accent' })
           ]),
           el('p', { class: 'fade-in-up' }, 'Turn your anime or manga list into a card worth sharing.')
         ),
@@ -279,7 +280,10 @@ export default {
         el(
           'aside',
           { class: 'wrapped-preview fade-in-up', 'aria-labelledby': 'wrapped-preview-title', style: { animationDelay: '120ms' } },
-          el('h2', { id: 'wrapped-preview-title' }, 'Your wrapped card'),
+          el('div', { class: 'flex items-center justify-between gap-2', style: { marginBottom: 'var(--s3)' } },
+            el('h2', { id: 'wrapped-preview-title', class: 'slide-in-left', style: { fontSize: 'var(--fs-section)', fontWeight: 600, letterSpacing: '-0.01em' } }, 'Your wrapped card'),
+            globeStamp('md')
+          ),
           stage,
           actions
         )
