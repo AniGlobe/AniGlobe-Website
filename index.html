@@ -7,7 +7,7 @@
 <meta name="description" content="Turn any public anime or manga profile into a shareable wrap card, then play the daily title-guessing game.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
@@ -16,32 +16,26 @@
 <div class="site-layout">
   <header class="topbar" role="banner">
     <div class="topbar-inner">
-      <button class="btn-quiet sidebar-toggle" type="button" id="sidebar-toggle" aria-expanded="false" aria-controls="site-sidebar" aria-label="Open tools">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <line x1="3" y1="6" x2="21" y2="6"></line>
-          <line x1="3" y1="12" x2="21" y2="12"></line>
-          <line x1="3" y1="18" x2="21" y2="18"></line>
-        </svg>
-      </button>
+      <div class="topbar-left">
+        <button class="sidebar-toggle" type="button" id="sidebar-toggle" aria-expanded="false" aria-controls="site-sidebar" aria-label="Open tools menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
 
-      <a class="brand topbar-brand" href="#/" aria-label="AniGlobe, home">
-        <img src="assets/logo/AniGlobe/AniGlobe - PRIMARY LOGO TRANSPARENT.png" alt="" aria-hidden="true" width="32" height="32">
-        <span>AniGlobe</span>
-      </a>
-
-      <div class="topbar-actions">
-        <button class="btn-quiet" type="button" aria-label="Search" style="display:none;">Search</button>
+        <a class="brand topbar-brand" href="#/" aria-label="AniGlobe, home">
+          <img src="assets/logo/AniGlobe/AniGlobe - PRIMARY LOGO TRANSPARENT.png" alt="AniGlobe">
+        </a>
       </div>
+
+      <div class="topbar-actions"></div>
     </div>
   </header>
 
   <aside class="site-sidebar" id="site-sidebar" role="navigation" aria-label="AniGlobe tools" data-state="closed">
     <div class="sidebar-inner">
-      <a class="brand" href="#/" aria-label="AniGlobe, home">
-        <img src="assets/logo/AniGlobe/AniGlobe - GLOBE TRANSPARENT BACKGROUND.png" alt="" aria-hidden="true">
-        <span>AniGlobe</span>
-      </a>
-
       <p class="sidebar-caption">Tools</p>
 
       <nav class="site-nav" id="nav" aria-label="AniGlobe tools"></nav>
@@ -54,7 +48,7 @@
 
   <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
 
-  <main class="sheet" id="app" tabindex="-1" role="main"></main>
+  <main class="sheet app" id="app" tabindex="-1" role="main"></main>
 
   <footer class="site-footer" role="contentinfo">
     <div class="footer-inner" id="footer"></div>

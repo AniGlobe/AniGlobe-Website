@@ -57,33 +57,43 @@ function renderFooter() {
     dom.footer,
     el(
       'div',
-      { class: 'footer-brand' },
-      el('h2', {}, site.name),
-      el('p', {}, site.tagline),
+      { class: 'footer-main' },
       el(
-        'nav',
-        { 'aria-label': 'AniGlobe tools' },
-        ...toolLinks.reduce((all, link, index) => {
-          if (index) all.push(' ');
-          all.push(link);
-          return all;
-        }, [])
+        'div',
+        { class: 'footer-intro' },
+        el(
+          'a',
+          { class: 'footer-brand', href: '#/', 'aria-label': site.name + ', home' },
+          el('img', {
+            src: 'assets/logo/AniGlobe/AniGlobe - PRIMARY LOGO TRANSPARENT.png',
+            alt: '',
+            class: 'footer-logo'
+          })
+        ),
+        el('p', { class: 'footer-tagline' }, site.tagline)
       ),
       el(
-        'nav',
-        { 'aria-label': 'Data sources' },
-        ...sources.reduce((all, link, index) => {
-          if (index) all.push(' ');
-          all.push(link);
-          return all;
-        }, [])
+        'div',
+        { class: 'footer-directory' },
+        el(
+          'nav',
+          { class: 'footer-links', 'aria-label': 'AniGlobe tools' },
+          el('h3', {}, 'Tools'),
+          ...toolLinks
+        ),
+        el(
+          'nav',
+          { class: 'footer-links', 'aria-label': 'Data sources' },
+          el('h3', {}, 'Data sources'),
+          ...sources
+        )
       )
     ),
     el(
       'div',
       { class: 'footer-base' },
-      el('span', {}, '© ' + new Date().getFullYear() + ' AniGlobe. An independent project.'),
-      el('p', {}, 'MyAnimeList, Jikan-Edge, and AniList are not affiliated with it.')
+      el('p', { class: 'footer-copyright' }, '© ' + new Date().getFullYear() + ' AniGlobe. An independent project.'),
+      el('p', { class: 'footer-disclaimer' }, 'MyAnimeList, Jikan-Edge, and AniList are not affiliated with AniGlobe.')
     )
   );
 }
@@ -190,12 +200,14 @@ function toggleSidebar() {
   dom.sidebar.setAttribute('data-state', isOpen ? 'closed' : 'open');
   dom.sidebarBackdrop.setAttribute('data-visible', isOpen ? 'false' : 'true');
   dom.sidebarToggle.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+  document.body.dataset.sidebar = isOpen ? 'closed' : 'open';
 }
 
 function closeSidebar() {
   dom.sidebar.setAttribute('data-state', 'closed');
   dom.sidebarBackdrop.setAttribute('data-visible', 'false');
   dom.sidebarToggle.setAttribute('aria-expanded', 'false');
+  document.body.dataset.sidebar = 'closed';
 }
 
 function start() {

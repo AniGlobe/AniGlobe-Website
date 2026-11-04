@@ -10,21 +10,10 @@ import { fetchDailyPuzzle } from '../providers/mal.js';
 import { site } from '../config.js';
 import { resolveMediaType } from '../domain/media.js';
 
-const STYLE_ID = 'tool-daily-styles';
 const MAX_CLUES = 5;
 const START_SCORE = 500;
 const PENALTY = 60;
 const FLOOR = 50;
-
-function injectStyles() {
-  if (document.getElementById(STYLE_ID)) return;
-
-  const link = document.createElement('link');
-  link.id = STYLE_ID;
-  link.rel = 'stylesheet';
-  link.href = new URL('../../assets/tool-daily.css', import.meta.url).href;
-  document.head.append(link);
-}
 
 function normalise(text) {
   return String(text || '')
@@ -121,7 +110,6 @@ export default {
   blurb: 'Five clues, one title. Reveal only what you need.',
 
   async mount(root, tool = {}) {
-    injectStyles();
     const media = resolveMediaType(tool.mediaType);
     const storageKey = (name) => 'daily:' + name + ':v4:' + media.id;
     const puzzleKey = 'daily:puzzle:v4:' + media.id;
@@ -130,11 +118,11 @@ export default {
 
     const head = el(
       'div',
-      { class: 'tool-head', style: { marginBottom: 'var(--s6)' } },
-      el('h1', { class: 'slide-in-left' }, media.label + ' Guess'),
-      el('p', { class: 'fade-in-up' }, 'Five clues hide one title. Every extra clue costs 60 points.')
+      { class: 'tool-head daily-head' },
+      el('h1', {}, media.label + ' Guess'),
+      el('p', {}, 'Five clues hide one title. Every extra clue costs 60 points.')
     );
-    const body = el('section', { class: 'daily-panel fade-in-up', 'aria-label': 'Daily ' + media.label.toLowerCase() + ' guessing game' });
+    const body = el('section', { class: 'daily-panel', 'aria-label': 'Daily ' + media.label.toLowerCase() + ' guessing game' });
     render(
       root,
       head,
@@ -208,14 +196,14 @@ export default {
 
     const meter = el('div', { class: 'daily-meter kpis', 'aria-live': 'polite' });
     const clueList = el('ol', { class: 'daily-clues', 'aria-label': 'Puzzle clues' });
+    const guesses = el('div', { class: 'daily-guesses', 'aria-label': 'Incorrect guesses' });
     const board = el(
       'section',
       { class: 'daily-board' },
       el('h2', { class: 'daily-board-title' }, 'From the record'),
       clueList,
-      el('div', { class: 'daily-guesses', 'aria-label': 'Incorrect guesses' })
+      guesses
     );
-    const guessRow = board.lastElementChild;
     const status = el('div', {
       class: 'status',
       role: 'status',
@@ -342,7 +330,7 @@ export default {
 
     function renderGuesses() {
       render(
-        guessRow,
+        guesses,
         wrongGuesses.length
           ? [
               el('span', { class: 'daily-guesses-label' }, 'Missed'),

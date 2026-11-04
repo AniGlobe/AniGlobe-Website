@@ -83,7 +83,12 @@ function timeStat(profile, media) {
 
 function globeStamp(size = 'md') {
   const cls = 'globe-stamp';
-  return el('div', { class: cls + (size !== 'md' ? ' ' + cls + '-' + size : ''), 'aria-hidden': 'true' });
+  return el('img', {
+    class: cls + (size !== 'md' ? ' ' + cls + '-' + size : ''),
+    src: 'assets/logo/AniGlobe/AniGlobe - DARK GLOBE TRANSPARENT BACKGROUND.png',
+    alt: '',
+    'aria-hidden': 'true',
+  });
 }
 
 export function renderCard(profile, options) {
@@ -101,14 +106,6 @@ export function renderCard(profile, options) {
     ? { label: 'Episodes', value: displayNumber(profile.episodes) }
     : { label: 'Chapters', value: displayNumber(profile.chapters) };
   const time = timeStat(profile, media);
-
-  // Palette backgrounds
-  const palettes = {
-    atlas: { bg: '#eef7f6', text: '#131416' },
-    coast: { bg: '#e8f1f8', text: '#131416' },
-    night: { bg: '#17303a', text: '#ffffff' },
-  };
-  const palette = palettes[prefs.theme] || palettes.atlas;
 
   const stats = el(
     'dl',
@@ -132,7 +129,7 @@ export function renderCard(profile, options) {
     'article',
     {
       class: 'export-card',
-      style: { '--card-bg': palette.bg, color: palette.text },
+      dataset: { theme: prefs.theme },
       'aria-label': media.label + ' Wrapped for ' + profile.name,
     },
     el(

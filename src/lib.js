@@ -29,7 +29,13 @@ export function el(tag, attrs = {}, ...children) {
     if (value == null || value === false) continue;
     if (key === 'class') node.className = String(value);
     else if (key === 'dataset') Object.assign(node.dataset, value);
-    else if (key === 'style' && typeof value === 'object') Object.assign(node.style, value);
+    else if (key === 'style' && typeof value === 'object') {
+      for (const [prop, propValue] of Object.entries(value)) {
+        if (propValue == null) continue;
+        if (prop.startsWith('--')) node.style.setProperty(prop, String(propValue));
+        else node.style[prop] = String(propValue);
+      }
+    }
     else if (key.startsWith('on') && typeof value === 'function') {
       node.addEventListener(key.slice(2).toLowerCase(), value);
     } else node.setAttribute(key, value === true ? '' : String(value));
