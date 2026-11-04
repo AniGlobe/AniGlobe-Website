@@ -43,7 +43,7 @@
   --control-height: 44px;
   --nav-pitch: 44px;
 
-  --fs-display: clamp(32px, 5vw, 48px);
+  --fs-display: clamp(24px, 3.5vw, 32px);
   --fs-title: 24px;
   --fs-section: 18px;
   --fs-kpi: clamp(40px, 5vw, 64px);
@@ -321,6 +321,7 @@ a { color: inherit; text-decoration: none; }
   font-size: var(--fs-small);
   line-height: 1.5;
   max-width: 45ch;
+  padding-inline: var(--s2);
 }
 
 .tool-stamp {
@@ -668,7 +669,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   display: inline-flex;
   width: 48px; height: 48px;
   border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, var(--raised) 0%, var(--surface) 60%, var(--border) 100%);
+  background: var(--surface);
   border: 1px solid var(--border);
   position: relative;
 }

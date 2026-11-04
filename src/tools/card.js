@@ -263,8 +263,8 @@ export default {
         el(
           'div',
           { class: 'tool-head wrapped-heading', style: { marginBottom: 'var(--s6)' } },
-          el('div', { class: 'flex items-center justify-between gap-3', style: { marginBottom: 'var(--s3)' } }, [
-            el('h1', { class: 'slide-in-left' }, 'AniManga Wrapped'),
+          el('div', { class: 'flex items-center justify-between gap-3', style: { marginBottom: 'var(--s3)', paddingInline: 'var(--s4)' } }, [
+            el('h1', { class: 'slide-in-left', style: { paddingLeft: 'var(--s2)' } }, 'AniManga Wrapped'),
             heroStamp
           ]),
           el('p', { class: 'fade-in-up' }, 'Turn your anime or manga list into a card worth sharing.')
