@@ -43,11 +43,11 @@
   --control-height: 44px;
   --nav-pitch: 44px;
 
-  --fs-display: clamp(24px, 3.5vw, 32px);
+  --fs-display: clamp(40px, 6vw, 64px);
   --fs-title: 24px;
   --fs-section: 18px;
-  --fs-kpi: clamp(40px, 5vw, 64px);
-  --fs-kpi-sm: 28px;
+  --fs-kpi: clamp(36px, 4.5vw, 56px);
+  --fs-kpi-sm: 24px;
   --fs-body: 16px;
   --fs-small: 14px;
   --fs-micro: 12px;
@@ -288,9 +288,9 @@ a { color: inherit; text-decoration: none; }
 .app {
   flex: 1;
   width: 100%;
-  max-width: 1200px;
+  max-width: 1400px;
   margin-inline: auto;
-  padding: var(--s7) var(--pad) var(--s8) var(--pad);
+  padding: var(--s8) var(--pad) var(--s8) var(--pad);
 }
 
 .app:focus-visible {
@@ -301,12 +301,10 @@ a { color: inherit; text-decoration: none; }
 
 .tool-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s4);
+  flex-direction: column;
+  gap: var(--s3);
   margin-bottom: var(--s7);
-  flex-wrap: wrap;
-  padding-inline: var(--s2);
+  padding-inline: var(--s4);
 }
 
 .tool-head h1 {
@@ -320,8 +318,7 @@ a { color: inherit; text-decoration: none; }
   color: var(--muted);
   font-size: var(--fs-small);
   line-height: 1.5;
-  max-width: 45ch;
-  padding-inline: var(--s2);
+  max-width: 55ch;
 }
 
 .tool-stamp {
@@ -604,7 +601,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .site-footer { grid-area: footer; border-top: 1px solid var(--border); background: var(--ground); }
 
 .footer-inner {
-  width: 100%; max-width: 1200px; margin-inline: auto;
+  width: 100%; max-width: 1400px; margin-inline: auto;
   padding: var(--s5) var(--pad) var(--s6) var(--pad);
 }
 
@@ -635,9 +632,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   :root {
     --topbar-height: 52px;
     --pad: 16px;
-    --s5: 20px; --s6: 28px; --s7: 40px; --s8: 56px;
-    --fs-display: clamp(28px, 6vw, 40px);
-    --fs-kpi: clamp(32px, 5vw, 48px);
+    --s5: 20px; --s6: 28px; --s7: 40px; --s8: 48px;
+    --fs-display: clamp(32px, 7vw, 48px);
+    --fs-kpi: clamp(30px, 5vw, 44px);
     --control-height: 48px;
     --nav-pitch: 48px;
   }
@@ -699,6 +696,27 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .globe-stamp-xl { width: 140px; height: 140px; }
 .globe-stamp-xl::before { width: 55%; height: 55%; }
 .globe-stamp-xl::after { width: 25%; height: 25%; }
+
+@media (max-width: 760px) {
+  .globe-stamp-xl { width: 100px; height: 100px; }
+  .globe-stamp-xl::before { width: 55%; height: 55%; }
+  .globe-stamp-xl::after { width: 25%; height: 25%; }
+}
+
+/* Hero accent field — flat colour field in corner, not touching edge */
+.hero-accent {
+  position: absolute;
+  top: var(--s6);
+  right: var(--s6);
+  width: 260px;
+  height: 260px;
+  background: var(--accent);
+  border-radius: 50%;
+  opacity: 0.05;
+  filter: blur(56px);
+  pointer-events: none;
+  z-index: -1;
+}
 
 .daily-grid {
   display: grid;
@@ -958,8 +976,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   content: "";
   position: absolute; top: 0; right: 0;
   width: 80px; height: 80px;
-  background: radial-gradient(circle at top right, var(--accent) 0%, transparent 70%);
-  opacity: 0.08;
+  background: var(--accent);
+  border-radius: 50%;
+  opacity: 0.06;
+  filter: blur(32px);
   pointer-events: none;
 }
 
@@ -1036,21 +1056,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .text-right { text-align: right; }
 .mt-1 { margin-top: var(--s1); } .mt-2 { margin-top: var(--s2); } .mt-3 { margin-top: var(--s3); } .mt-4 { margin-top: var(--s4); } .mt-5 { margin-top: var(--s5); }
 .mb-1 { margin-bottom: var(--s1); } .mb-2 { margin-bottom: var(--s2); } .mb-3 { margin-bottom: var(--s3); } .mb-4 { margin-bottom: var(--s4); } .mb-5 { margin-bottom: var(--s5); }
-
-/* Hero accent field — fills the void with flat colour */
-.hero-accent {
-  position: absolute;
-  top: var(--s4);
-  right: var(--s4);
-  width: 320px;
-  height: 320px;
-  background: var(--accent);
-  border-radius: 50%;
-  opacity: 0.05;
-  filter: blur(48px);
-  pointer-events: none;
-  z-index: -1;
-}
 
 /* ========================================================================
    HERO MOTION — globe entrance animation
