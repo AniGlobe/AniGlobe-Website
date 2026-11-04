@@ -1,6 +1,6 @@
 {
  "url": "http://localhost:8000",
- "at": "2026-11-03T15:50:51.392Z",
+ "at": "2026-11-03T16:23:43.800Z",
  "allow": [],
  "viewports": [
   {
@@ -9,7 +9,7 @@
    "load": "load",
    "screens": 1,
    "filled": [
-    0.32
+    0.33
    ],
    "motion": {
     "elements": 0,
@@ -27,7 +27,7 @@
     "page": {
      "height": 900,
      "screens": 1,
-     "words": 117,
+     "words": 152,
      "img": 2,
      "video": 0,
      "canvas": 0,
@@ -52,8 +52,8 @@
      "words": 2,
      "chars": 16,
      "lines": 1,
-     "size": 48,
-     "vw": 3.3,
+     "size": 32,
+     "vw": 2.2,
      "font": "Inter",
      "weight": 600,
      "tracking": -0.03,
@@ -68,7 +68,7 @@
      "text": "AniManga Wrapped",
      "words": 2,
      "lines": 1,
-     "size": 48,
+     "size": 32,
      "font": "Inter"
     },
     "headings": [
@@ -77,8 +77,8 @@
       "words": 2,
       "chars": 16,
       "lines": 1,
-      "size": 48,
-      "vw": 3.3,
+      "size": 32,
+      "vw": 2.2,
       "font": "Inter",
       "weight": 600,
       "tracking": -0.03,
@@ -88,7 +88,7 @@
       "mono": false,
       "align": "left",
       "position": "left",
-      "widthRatio": 0.3,
+      "widthRatio": 0.2,
       "top": 48,
       "tag": "h1",
       "kind": "heading"
@@ -119,7 +119,7 @@
       15,
       16,
       17,
-      48
+      32
      ],
      "sizeCount": 7,
      "notLoaded": [],
@@ -131,10 +131,10 @@
       "tracking": 0,
       "contrast": 6.9
      },
-     "measureChars": 35,
+     "measureChars": 46,
      "max": {
-      "size": 48,
-      "vw": 3.3,
+      "size": 32,
+      "vw": 2.2,
       "font": "Inter",
       "text": "AniManga Wrapped"
      },
@@ -142,14 +142,12 @@
      "monoProseShare": 0,
      "monoFamilies": [],
      "monoSamples": [],
-     "microLabels": 1,
-     "microLabelShare": 0.006,
-     "microSamples": [
-      "Tools"
-     ],
-     "upperShare": 0.01,
-     "centerShare": 0.1,
-     "smallText": 2
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.02,
+     "smallText": 3
     },
     "eyebrows": [],
     "numbered": [],
@@ -179,36 +177,27 @@
       },
       {
        "color": "#949494",
-       "share": 0.23
+       "share": 0.25
       },
       {
        "color": "#ffffff",
-       "share": 0.11
+       "share": 0.08
       },
       {
        "color": "#000000",
-       "share": 0.02
+       "share": 0.03
       }
      ],
      "button": {
-      "bg": "#111111",
+      "bg": "#3b82f6",
       "hsl": {
-       "h": 0,
-       "s": 0,
-       "l": 0.07
+       "h": 217,
+       "s": 0.91,
+       "l": 0.6
       },
       "fg": "#000000"
      },
-     "lowContrast": [
-      {
-       "text": "Skip to the app",
-       "ratio": 1.1,
-       "need": 4.5,
-       "size": 13,
-       "fg": "#000000",
-       "bg": "#111111"
-      }
-     ]
+     "lowContrast": []
     },
     "buttons": {
      "count": 2,
@@ -226,7 +215,7 @@
     },
     "surfaces": {
      "shadowStatic": 1,
-     "shadowOverlay": 1,
+     "shadowOverlay": 0,
      "shadowSamples": [
       "span.swatch-dot → rgb(0, 0, 0) 0px 0px 0px 2px, rgb(59, 130, 246) 0px 0px 0px 5px"
      ],
@@ -234,19 +223,19 @@
      "scrims": 0,
      "gradientSamples": [],
      "gradientText": 0,
-     "hairlines": 5,
+     "hairlines": 6,
      "hairlineSamples": [
       "header.topbar 1440px",
       "aside#site-sidebar.site-sidebar 260px",
       "div.wrapped-settings 336px",
-      "footer.site-footer 1440px",
-      "div.footer-base 1052px"
+      "footer.export-card-footer 370px",
+      "footer.site-footer 1440px"
      ],
-     "outlinedBoxes": 0,
+     "outlinedBoxes": 1,
      "dashed": 0,
      "blurred": 0,
-     "roundedBoxes": 3,
-     "boxRadius": 16,
+     "roundedBoxes": 4,
+     "boxRadius": 99,
      "squareMedia": 0,
      "roundedMedia": 0,
      "mediaRadius": 0,
@@ -281,23 +270,23 @@
       "tag": "main",
       "top": 48,
       "height": 720,
-      "words": 73,
+      "words": 110,
       "media": 0,
-      "middle": 215,
+      "middle": 175,
       "heading": {
        "text": "Your wrapped card",
        "size": 16,
        "tag": "h2"
       },
       "left": 24,
-      "right": 38,
+      "right": 54,
       "textLeft": 24,
-      "textRight": 38,
+      "textRight": 54,
       "fullBleed": false,
-      "footer": false,
+      "footer": true,
       "hero": true,
       "continues": false,
-      "pinned": false
+      "pinned": true
      },
      {
       "sel": "footer.site-footer",
@@ -327,7 +316,7 @@
     "h1s": [
      {
       "text": "AniManga Wrapped",
-      "size": 48,
+      "size": 32,
       "top": 48,
       "firstScreen": true
      }
@@ -335,25 +324,29 @@
     "edgeText": [],
     "edges": [
      {
-      "x": 0,
+      "x": 747,
+      "n": 3
+     },
+     {
+      "x": 16,
       "n": 1
      },
      {
-      "x": 400,
+      "x": 416,
       "n": 1
      }
     ],
-    "leftBlocks": 2,
+    "leftBlocks": 5,
     "bodySize": 13,
     "stage": false,
     "explains": false,
     "slivers": [],
-    "voidShare": 0.3,
+    "voidShare": 0.17,
     "voidBox": {
      "x": 360,
-     "y": 420,
-     "w": 1080,
-     "h": 360
+     "y": 180,
+     "w": 360,
+     "h": 600
     }
    },
    "app": {
@@ -374,15 +367,15 @@
     },
     "canvas": {
      "left": 15,
-     "right": 38
+     "right": 54
     },
     "hero": {
      "text": "AniManga Wrapped",
      "words": 2,
      "chars": 16,
      "lines": 1,
-     "size": 48,
-     "vw": 3.3,
+     "size": 32,
+     "vw": 2.2,
      "font": "Inter",
      "weight": 600,
      "tracking": -0.03,
@@ -398,25 +391,19 @@
      "panels": 4,
      "firstScreen": 4,
      "ragged": [],
-     "voids": [
-      {
-       "gap": 55,
-       "at": 368,
-       "panel": "Your wrap will take shape here. Enter a "
-      }
-     ]
+     "voids": []
     },
     "tiles": 0,
     "panels": {
-     "count": 4,
+     "count": 5,
      "radii": [
       [
-       16,
+       999,
        2
       ],
       [
-       999,
-       1
+       16,
+       2
       ],
       [
        0,
@@ -425,11 +412,9 @@
      ],
      "heavyBorders": 0,
      "borderSamples": [],
-     "heavyShadows": 1,
+     "heavyShadows": 0,
      "softShadows": 0,
-     "shadowSamples": [
-      "rgba(0, 0, 0, 0.5) 0px 20px 60px 0px"
-     ],
+     "shadowSamples": [],
      "glass": 0
     },
     "chips": {
@@ -448,7 +433,7 @@
     "chartHues": 0,
     "placeholders": [],
     "type": {
-     "under13": 0.11,
+     "under13": 0.13,
      "tiny": 0,
      "tinySamples": [],
      "sizes": [
@@ -458,12 +443,12 @@
       15,
       16,
       17,
-      48
+      32
      ]
     },
     "title": {
      "text": "AniManga Wrapped",
-     "size": 48,
+     "size": 32,
      "top": 48
     },
     "colourShare": 0
@@ -474,9 +459,10 @@
    "width": 768,
    "height": 1024,
    "load": "load",
-   "screens": 1,
+   "screens": 2,
    "filled": [
-    0.58
+    0.59,
+    0.69
    ],
    "motion": {
     "elements": 0,
@@ -492,9 +478,9 @@
      "h": 1024
     },
     "page": {
-     "height": 1024,
-     "screens": 1,
-     "words": 117,
+     "height": 1149,
+     "screens": 1.1,
+     "words": 152,
      "img": 2,
      "video": 0,
      "canvas": 0,
@@ -519,8 +505,8 @@
      "words": 2,
      "chars": 16,
      "lines": 1,
-     "size": 35,
-     "vw": 4.5,
+     "size": 27,
+     "vw": 3.5,
      "font": "Inter",
      "weight": 600,
      "tracking": -0.03,
@@ -535,7 +521,7 @@
      "text": "AniManga Wrapped",
      "words": 2,
      "lines": 1,
-     "size": 34.6,
+     "size": 26.9,
      "font": "Inter"
     },
     "headings": [
@@ -544,8 +530,8 @@
       "words": 2,
       "chars": 16,
       "lines": 1,
-      "size": 34.6,
-      "vw": 4.5,
+      "size": 26.9,
+      "vw": 3.5,
       "font": "Inter",
       "weight": 600,
       "tracking": -0.03,
@@ -555,7 +541,7 @@
       "mono": false,
       "align": "left",
       "position": "left",
-      "widthRatio": 0.41,
+      "widthRatio": 0.32,
       "top": 48,
       "tag": "h1",
       "kind": "heading"
@@ -586,7 +572,7 @@
       15,
       16,
       17,
-      35
+      27
      ],
      "sizeCount": 7,
      "notLoaded": [],
@@ -598,10 +584,10 @@
       "tracking": 0,
       "contrast": 6.9
      },
-     "measureChars": 35,
+     "measureChars": 46,
      "max": {
-      "size": 34.6,
-      "vw": 4.5,
+      "size": 26.9,
+      "vw": 3.5,
       "font": "Inter",
       "text": "AniManga Wrapped"
      },
@@ -609,14 +595,12 @@
      "monoProseShare": 0,
      "monoFamilies": [],
      "monoSamples": [],
-     "microLabels": 1,
-     "microLabelShare": 0.006,
-     "microSamples": [
-      "Tools"
-     ],
-     "upperShare": 0.01,
-     "centerShare": 0.1,
-     "smallText": 2
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.02,
+     "smallText": 3
     },
     "eyebrows": [],
     "numbered": [],
@@ -640,7 +624,7 @@
       },
       {
        "color": "#111111",
-       "top": 119,
+       "top": 113,
        "hsl": {
         "h": 0,
         "s": 0,
@@ -655,36 +639,27 @@
       },
       {
        "color": "#949494",
-       "share": 0.23
+       "share": 0.25
       },
       {
        "color": "#ffffff",
-       "share": 0.11
+       "share": 0.08
       },
       {
        "color": "#000000",
-       "share": 0.02
+       "share": 0.03
       }
      ],
      "button": {
-      "bg": "#111111",
+      "bg": "#3b82f6",
       "hsl": {
-       "h": 0,
-       "s": 0,
-       "l": 0.07
+       "h": 217,
+       "s": 0.91,
+       "l": 0.6
       },
       "fg": "#000000"
      },
-     "lowContrast": [
-      {
-       "text": "Skip to the app",
-       "ratio": 1.1,
-       "need": 4.5,
-       "size": 13,
-       "fg": "#000000",
-       "bg": "#111111"
-      }
-     ]
+     "lowContrast": []
     },
     "buttons": {
      "count": 2,
@@ -701,29 +676,28 @@
      ]
     },
     "surfaces": {
-     "shadowStatic": 2,
+     "shadowStatic": 1,
      "shadowOverlay": 0,
      "shadowSamples": [
-      "span.swatch-dot → rgb(0, 0, 0) 0px 0px 0px 2px, rgb(59, 130, 246) 0px 0px 0px 5px",
-      "div.export-card.export-card--empty → rgba(0, 0, 0, 0.5) 0px 20px 60px 0px"
+      "span.swatch-dot → rgb(0, 0, 0) 0px 0px 0px 2px, rgb(59, 130, 246) 0px 0px 0px 5px"
      ],
      "gradients": 0,
      "scrims": 0,
      "gradientSamples": [],
      "gradientText": 0,
-     "hairlines": 5,
+     "hairlines": 6,
      "hairlineSamples": [
       "header.topbar 768px",
       "aside#site-sidebar.site-sidebar 260px",
       "div.wrapped-settings 720px",
-      "footer.site-footer 768px",
-      "div.footer-base 720px"
+      "footer.export-card-footer 370px",
+      "footer.site-footer 768px"
      ],
-     "outlinedBoxes": 0,
+     "outlinedBoxes": 1,
      "dashed": 0,
      "blurred": 0,
-     "roundedBoxes": 3,
-     "boxRadius": 16,
+     "roundedBoxes": 4,
+     "boxRadius": 99,
      "squareMedia": 0,
      "roundedMedia": 0,
      "mediaRadius": 0,
@@ -747,9 +721,9 @@
      "w": 768,
      "h": 1024
     },
-    "pageH": 1024,
+    "pageH": 1149,
     "margins": {
-     "left": 0,
+     "left": 16,
      "right": 24
     },
     "sections": [
@@ -757,21 +731,21 @@
       "sel": "main#app.sheet",
       "tag": "main",
       "top": 48,
-      "height": 816,
-      "words": 81,
+      "height": 941,
+      "words": 120,
       "media": 0,
       "middle": 0,
       "heading": {
-       "text": "Your wrapped card",
-       "size": 16,
-       "tag": "h2"
+       "text": "AniManga Wrapped",
+       "size": 27,
+       "tag": "h1"
       },
-      "left": 0,
+      "left": 16,
       "right": 24,
-      "textLeft": 0,
-      "textRight": 38,
+      "textLeft": 16,
+      "textRight": 49,
       "fullBleed": false,
-      "footer": false,
+      "footer": true,
       "hero": true,
       "continues": false,
       "pinned": false
@@ -779,7 +753,7 @@
      {
       "sel": "footer.site-footer",
       "tag": "footer",
-      "top": 864,
+      "top": 989,
       "height": 160,
       "words": 32,
       "media": 0,
@@ -804,30 +778,23 @@
     "h1s": [
      {
       "text": "AniManga Wrapped",
-      "size": 35,
+      "size": 27,
       "top": 48,
       "firstScreen": true
      }
     ],
-    "edgeText": [
-     {
-      "text": "AniManga Wrapped",
-      "side": "left",
-      "px": 0
-     },
-     {
-      "text": "Your wrapped card",
-      "side": "left",
-      "px": 0
-     }
-    ],
+    "edgeText": [],
     "edges": [
      {
-      "x": 0,
+      "x": 211,
+      "n": 3
+     },
+     {
+      "x": 16,
       "n": 2
      }
     ],
-    "leftBlocks": 2,
+    "leftBlocks": 5,
     "bodySize": 13,
     "stage": false,
     "explains": false,
@@ -860,8 +827,8 @@
      "words": 2,
      "chars": 16,
      "lines": 1,
-     "size": 35,
-     "vw": 4.5,
+     "size": 27,
+     "vw": 3.5,
      "font": "Inter",
      "weight": 600,
      "tracking": -0.03,
@@ -881,11 +848,11 @@
     },
     "tiles": 0,
     "panels": {
-     "count": 3,
+     "count": 4,
      "radii": [
       [
        999,
-       1
+       2
       ],
       [
        0,
@@ -898,11 +865,9 @@
      ],
      "heavyBorders": 0,
      "borderSamples": [],
-     "heavyShadows": 1,
+     "heavyShadows": 0,
      "softShadows": 0,
-     "shadowSamples": [
-      "rgba(0, 0, 0, 0.5) 0px 20px 60px 0px"
-     ],
+     "shadowSamples": [],
      "glass": 0
     },
     "chips": {
@@ -921,7 +886,7 @@
     "chartHues": 0,
     "placeholders": [],
     "type": {
-     "under13": 0.11,
+     "under13": 0.13,
      "tiny": 0,
      "tinySamples": [],
      "sizes": [
@@ -931,12 +896,12 @@
       15,
       16,
       17,
-      35
+      27
      ]
     },
     "title": {
      "text": "AniManga Wrapped",
-     "size": 35,
+     "size": 27,
      "top": 48
     },
     "colourShare": 0.001
@@ -950,7 +915,7 @@
    "screens": 2,
    "filled": [
     0.81,
-    0.75
+    0.79
    ],
    "motion": {
     "elements": 0,
@@ -966,9 +931,9 @@
      "h": 844
     },
     "page": {
-     "height": 1175,
-     "screens": 1.4,
-     "words": 117,
+     "height": 1314,
+     "screens": 1.6,
+     "words": 152,
      "img": 2,
      "video": 0,
      "canvas": 0,
@@ -1072,7 +1037,7 @@
       "tracking": 0,
       "contrast": 6.9
      },
-     "measureChars": 41,
+     "measureChars": 43,
      "max": {
       "size": 28,
       "vw": 7.2,
@@ -1083,14 +1048,12 @@
      "monoProseShare": 0,
      "monoFamilies": [],
      "monoSamples": [],
-     "microLabels": 1,
-     "microLabelShare": 0.006,
-     "microSamples": [
-      "Tools"
-     ],
-     "upperShare": 0.01,
-     "centerShare": 0.1,
-     "smallText": 2
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0,
+     "centerShare": 0.02,
+     "smallText": 3
     },
     "eyebrows": [],
     "numbered": [],
@@ -1129,36 +1092,27 @@
       },
       {
        "color": "#949494",
-       "share": 0.23
+       "share": 0.25
       },
       {
        "color": "#ffffff",
-       "share": 0.11
+       "share": 0.08
       },
       {
        "color": "#000000",
-       "share": 0.02
+       "share": 0.03
       }
      ],
      "button": {
-      "bg": "#111111",
+      "bg": "#3b82f6",
       "hsl": {
-       "h": 0,
-       "s": 0,
-       "l": 0.07
+       "h": 217,
+       "s": 0.91,
+       "l": 0.6
       },
       "fg": "#000000"
      },
-     "lowContrast": [
-      {
-       "text": "Skip to the app",
-       "ratio": 1.1,
-       "need": 4.5,
-       "size": 13,
-       "fg": "#000000",
-       "bg": "#111111"
-      }
-     ]
+     "lowContrast": []
     },
     "buttons": {
      "count": 2,
@@ -1175,28 +1129,26 @@
      ]
     },
     "surfaces": {
-     "shadowStatic": 1,
+     "shadowStatic": 0,
      "shadowOverlay": 0,
-     "shadowSamples": [
-      "div.export-card.export-card--empty → rgba(0, 0, 0, 0.5) 0px 20px 60px 0px"
-     ],
+     "shadowSamples": [],
      "gradients": 0,
      "scrims": 0,
      "gradientSamples": [],
      "gradientText": 0,
-     "hairlines": 6,
+     "hairlines": 7,
      "hairlineSamples": [
       "header.topbar 390px",
       "aside#site-sidebar.site-sidebar 300px",
       "div.sidebar-foot 267px",
       "div.wrapped-settings 350px",
-      "footer.site-footer 390px"
+      "footer.export-card-footer 348px"
      ],
-     "outlinedBoxes": 0,
+     "outlinedBoxes": 1,
      "dashed": 0,
      "blurred": 0,
-     "roundedBoxes": 3,
-     "boxRadius": 16,
+     "roundedBoxes": 4,
+     "boxRadius": 99,
      "squareMedia": 0,
      "roundedMedia": 0,
      "mediaRadius": 0,
@@ -1220,9 +1172,9 @@
      "w": 390,
      "h": 844
     },
-    "pageH": 1175,
+    "pageH": 1314,
     "margins": {
-     "left": 0,
+     "left": 16,
      "right": 20
     },
     "sections": [
@@ -1230,17 +1182,17 @@
       "sel": "main#app.sheet",
       "tag": "main",
       "top": 52,
-      "height": 893,
-      "words": 81,
+      "height": 1032,
+      "words": 118,
       "media": 0,
       "middle": 0,
       "heading": null,
-      "left": 0,
+      "left": 16,
       "right": 20,
-      "textLeft": 0,
-      "textRight": 22,
+      "textLeft": 16,
+      "textRight": 21,
       "fullBleed": false,
-      "footer": false,
+      "footer": true,
       "hero": true,
       "continues": false,
       "pinned": false
@@ -1248,7 +1200,7 @@
      {
       "sel": "footer.site-footer",
       "tag": "footer",
-      "top": 945,
+      "top": 1084,
       "height": 230,
       "words": 32,
       "media": 0,
@@ -1278,30 +1230,18 @@
       "firstScreen": true
      }
     ],
-    "edgeText": [
-     {
-      "text": "AniManga Wrapped",
-      "side": "left",
-      "px": 0
-     },
-     {
-      "text": "Turn your anime or manga list into a card worth sh",
-      "side": "left",
-      "px": 0
-     },
-     {
-      "text": "Your wrapped card",
-      "side": "left",
-      "px": 0
-     }
-    ],
+    "edgeText": [],
     "edges": [
      {
-      "x": 0,
+      "x": 33,
+      "n": 3
+     },
+     {
+      "x": 16,
       "n": 2
      }
     ],
-    "leftBlocks": 2,
+    "leftBlocks": 5,
     "bodySize": 13,
     "stage": false,
     "explains": false,
@@ -1321,7 +1261,7 @@
      "h": 52
     },
     "canvas": {
-     "left": 0,
+     "left": 16,
      "right": 20
     },
     "hero": {
@@ -1343,7 +1283,7 @@
     },
     "charts": 0,
     "layout": {
-     "panels": 2,
+     "panels": 3,
      "firstScreen": 2,
      "ragged": [],
      "voids": [
@@ -1356,11 +1296,11 @@
     },
     "tiles": 0,
     "panels": {
-     "count": 2,
+     "count": 3,
      "radii": [
       [
        999,
-       1
+       2
       ],
       [
        0,
@@ -1390,7 +1330,7 @@
     "chartHues": 0,
     "placeholders": [],
     "type": {
-     "under13": 0.11,
+     "under13": 0.13,
      "tiny": 0,
      "tinySamples": [],
      "sizes": [
@@ -1413,74 +1353,7 @@
    "consoleErrors": []
   }
  ],
- "findings": [
-  {
-   "level": "WARN",
-   "id": "micro-label",
-   "width": 1440,
-   "message": "1 tiny uppercase letter-spaced label(s): \"Tools\"",
-   "fix": "Prefer sentence case at body size.",
-   "alsoAt": [
-    768,
-    390
-   ]
-  },
-  {
-   "level": "FAIL",
-   "id": "contrast",
-   "width": 1440,
-   "message": "Unreadable text: \"Skip to the app\" 1.1:1 (#000000 on #111111)",
-   "fix": "Raise contrast to at least 4.5:1 for text, 3:1 for large display.",
-   "alsoAt": [
-    768,
-    390
-   ]
-  },
-  {
-   "level": "WARN",
-   "id": "hero-void",
-   "width": 1440,
-   "message": "30% of the first screen is one empty block (1080×360px at 360,420).",
-   "fix": "Place the void on purpose or fill it: move the picture, the film or one fact into it, grow the headline to meet it, or shrink the screen to its content. A void reads as placed only when something closes it on the far side and it is the screen's one rest."
-  },
-  {
-   "level": "FAIL",
-   "id": "heavy-shadow",
-   "width": 1440,
-   "message": "1 panel shadow(s) heavy enough to read as floating: rgba(0, 0, 0, 0.5) 0px 20px 60px 0px",
-   "fix": "Panels sit on the ground: separate them with a fill one step from the ground or a quiet 1px border. A shadow, if any, is under 8% black with a small blur. Real overlays (menus, dialogs, popovers) may float.",
-   "alsoAt": [
-    768
-   ]
-  },
-  {
-   "level": "WARN",
-   "id": "panel-void",
-   "width": 1440,
-   "message": "1 card(s) hold a blank band inside: 55px in \"Your wrap will take shape here. Enter a \".",
-   "fix": "A card stretches to its neighbour only when it has content to fill. Keep a legend or a note directly under its chart (only an action or a total may sit at a stretched card's foot), let a short card keep its own height (align-items: start), and let a filtered block shrink to its rows."
-  },
-  {
-   "level": "WARN",
-   "id": "app-title-size",
-   "width": 1440,
-   "message": "The h1 is 48px (\"AniManga Wrapped\").",
-   "fix": "An app screen is not a landing page: the title is 18-32px (20-24px on a phone).",
-   "alsoAt": [
-    768
-   ]
-  },
-  {
-   "level": "FAIL",
-   "id": "edge-text",
-   "width": 768,
-   "message": "2 text block(s) sit within 16px of the screen edge: \"AniManga Wrapped\" (0px from the left); \"Your wrapped card\" (0px from the left)",
-   "fix": "Keep text inside the page margin (16–32px or more). Only display type deliberately bled past the edge may touch it.",
-   "alsoAt": [
-    390
-   ]
-  }
- ],
+ "findings": [],
  "images": [
   {
    "viewport": "desktop",

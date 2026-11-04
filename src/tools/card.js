@@ -121,7 +121,7 @@ function swatchControl(preferred) {
  */
 function slotsCard(message, busy) {
   const attrs = {
-    class: 'export-card export-card--empty' + (busy ? ' export-card--loading' : ''),
+    class: 'export-card export-card--empty fade-in-up' + (busy ? ' export-card--loading' : ''),
     style: { '--card-bg': '#111111' },
   };
   if (busy) {
@@ -133,18 +133,18 @@ function slotsCard(message, busy) {
     attrs,
     el('div', { class: 'export-card-body' },
       el('header', { class: 'export-card-header' },
-        el('h2', { class: 'export-card-title' }, 'AniManga Wrapped'),
+        el('h2', { class: 'export-card-title slide-in-left' }, 'AniManga Wrapped'),
         globeStamp('sm')
       ),
       el('div', { class: 'export-identity' },
-        el('p', { class: 'export-name', style: { color: 'var(--faint)', fontSize: 'var(--fs-body)' } }, 'Your card appears here'),
-        el('p', { class: 'export-since' }, 'Enter a public MyAnimeList or AniList username to begin')
+        el('p', { class: 'export-name fade-in-up', style: { color: 'var(--faint)', fontSize: 'var(--fs-body)' } }, 'Your card appears here'),
+        el('p', { class: 'export-since fade-in-up', style: { animationDelay: '60ms' } }, 'Enter a public MyAnimeList or AniList username to begin')
       ),
-      el('div', { class: 'export-archetype', style: { marginTop: 'var(--s3)' } },
-        el('h3', { class: 'export-archetype-label' }, 'What you\'ll see'),
+      el('div', { class: 'export-archetype fade-in-up', style: { marginTop: 'var(--s3)', animationDelay: '120ms' } },
+        el('h3', { class: 'export-archetype-label slide-in-left' }, 'What you\'ll see'),
         el('p', { class: 'export-archetype-blurb' }, 'Titles, episodes, watch time, mean score, frequent genres, top completed titles, favorites, and a standout rating: all in a single shareable card.')
       ),
-      el('footer', { class: 'export-card-footer' },
+      el('footer', { class: 'export-card-footer fade-in-up', style: { animationDelay: '180ms' } },
         el('span', {}, 'Profile data from MyAnimeList or AniList'),
         el('span', { class: 'export-footer-mark' }, 'AniGlobe')
       )
@@ -252,6 +252,9 @@ export default {
       status
     );
 
+    const heroStamp = globeStamp('xl');
+    heroStamp.classList.add('fade-in-up');
+
     render(
       root,
       el(
@@ -259,14 +262,23 @@ export default {
         { class: 'wrapped-page' },
         el(
           'div',
-          { class: 'tool-head wrapped-heading' },
-          el('h1', {}, 'AniManga Wrapped'),
-          el('p', {}, 'Turn your anime or manga list into a card worth sharing.')
+          { class: 'tool-head wrapped-heading', style: { marginBottom: 'var(--s6)' } },
+          el('div', { class: 'flex items-center justify-between gap-3', style: { marginBottom: 'var(--s3)' } }, [
+            el('h1', { class: 'slide-in-left' }, 'AniManga Wrapped'),
+            heroStamp
+          ]),
+          el('p', { class: 'fade-in-up' }, 'Turn your anime or manga list into a card worth sharing.')
         ),
-        el('section', { class: 'panel wrapped-panel', 'aria-label': 'AniManga Wrapped generator' }, form),
+        el('section', { class: 'panel wrapped-panel fade-in-up', 'aria-label': 'AniManga Wrapped generator', style: { animationDelay: '60ms' } },
+      el('div', { class: 'flex items-center justify-between gap-2', style: { marginBottom: 'var(--s3)' } },
+        el('h2', { class: 'slide-in-left', style: { fontSize: 'var(--fs-section)', fontWeight: 600, letterSpacing: '-0.01em' } }, 'Create your wrap'),
+        globeStamp('md')
+      ),
+      form
+    ),
         el(
           'aside',
-          { class: 'wrapped-preview', 'aria-labelledby': 'wrapped-preview-title' },
+          { class: 'wrapped-preview fade-in-up', 'aria-labelledby': 'wrapped-preview-title', style: { animationDelay: '120ms' } },
           el('h2', { id: 'wrapped-preview-title' }, 'Your wrapped card'),
           stage,
           actions

@@ -130,11 +130,11 @@ export default {
 
     const head = el(
       'div',
-      { class: 'tool-head' },
-      el('h1', {}, media.label + ' Guess'),
-      el('p', {}, 'Five clues hide one title. Every extra clue costs 60 points.')
+      { class: 'tool-head', style: { marginBottom: 'var(--s6)' } },
+      el('h1', { class: 'slide-in-left' }, media.label + ' Guess'),
+      el('p', { class: 'fade-in-up' }, 'Five clues hide one title. Every extra clue costs 60 points.')
     );
-    const body = el('section', { class: 'daily-panel', 'aria-label': 'Daily ' + media.label.toLowerCase() + ' guessing game' });
+    const body = el('section', { class: 'daily-panel fade-in-up', 'aria-label': 'Daily ' + media.label.toLowerCase() + ' guessing game' });
     render(
       root,
       head,
