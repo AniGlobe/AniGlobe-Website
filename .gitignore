@@ -2,7 +2,7 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.log
-.taste-skill/*
+.taste-skill/
 .taste-skill/inspect/
 .taste-skill/before*/
 .taste-skill/after*/
@@ -12,3 +12,5 @@ Thumbs.db
 /AGENTS.md
 !assets/logo/**/*.png
 *.txt
+tmp-probe.txt
+tmp-probe2.txt
