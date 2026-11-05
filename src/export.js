@@ -42,7 +42,7 @@ async function getHtmlToImage() {
  * transparent, which looks broken when the PNG is posted on a dark feed.
  *
  * @param {HTMLElement} node
- * @param {{pixelRatio?: number, background?: string}} [options]
+ * @param {{pixelRatio?: number, background?: string, style?: Record<string, string>}} [options]
  * @returns {Promise<string>} data URL
  */
 export async function nodeToPng(node, options) {
@@ -52,10 +52,14 @@ export async function nodeToPng(node, options) {
   const htmlToImage = await getHtmlToImage();
 
   try {
-    return await htmlToImage.toPng(node, {
+    const renderOptions = {
       pixelRatio: opts.pixelRatio || 2,
       backgroundColor: opts.background || '#ffffff',
       cacheBust: true,
+    };
+    if (opts.style) renderOptions.style = opts.style;
+    return await htmlToImage.toPng(node, {
+      ...renderOptions,
     });
   } catch (error) {
     const message = String((error && error.message) || '');
@@ -69,6 +73,40 @@ export async function nodeToPng(node, options) {
 
     throw new ExportError('Could not render the card to an image.', 'render');
   }
+}
+
+function fitImageToCanvas(dataUrl, width, height, background, pixelRatio) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return Promise.reject(new ExportError('The selected export dimensions are invalid.', 'dimensions'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
+      const context = canvas.getContext('2d');
+      if (!context) {
+        reject(new ExportError('Could not prepare the image canvas.', 'canvas'));
+        return;
+      }
+
+      const scale = Math.min(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
+      const drawWidth = image.naturalWidth * scale;
+      const drawHeight = image.naturalHeight * scale;
+      try {
+        context.fillStyle = background || '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, (canvas.width - drawWidth) / 2, (canvas.height - drawHeight) / 2, drawWidth, drawHeight);
+        resolve(canvas.toDataURL('image/png'));
+      } catch {
+        reject(new ExportError('Could not prepare the image for the selected layout.', 'canvas'));
+      }
+    };
+    image.onerror = () => reject(new ExportError('Could not read the rendered card image.', 'render'));
+    image.src = dataUrl;
+  });
 }
 
 /**
@@ -112,7 +150,18 @@ export function pngFileName(prefix, label, date) {
 
 /** Render and download in one call. Returns the data URL for preview reuse. */
 export async function exportNode(node, fileName, options) {
-  const dataUrl = await nodeToPng(node, options);
-  downloadDataUrl(dataUrl, fileName);
-  return dataUrl;
+  const opts = options || {};
+  const pixelRatio = opts.pixelRatio || 2;
+  const dataUrl = await nodeToPng(node, {
+    pixelRatio,
+    background: opts.background,
+    style: opts.renderWidth
+      ? { width: opts.renderWidth + 'px', maxWidth: 'none' }
+      : undefined,
+  });
+  const output = opts.width && opts.height
+    ? await fitImageToCanvas(dataUrl, opts.width, opts.height, opts.background, pixelRatio)
+    : dataUrl;
+  downloadDataUrl(output, fileName);
+  return output;
 }

@@ -7,6 +7,9 @@ import { resolveMediaType } from '../domain/media.js';
 
 const MIN_REQUEST_GAP = 400;
 const REQUEST_TIMEOUT_MS = 10000;
+const USER_LIST_PAGE_LIMIT = 300;
+const MAX_USER_LIST_PAGES = 100;
+const MAX_TITLE_DETAILS = 16;
 let requestQueue = Promise.resolve();
 let lastRequestAt = 0;
 
@@ -101,7 +104,191 @@ function toYear(date) {
   return Number.isFinite(year) ? year : null;
 }
 
-export async function fetchProfile(username, mediaType = 'anime') {
+function finiteNumber(value) {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normalizeStatus(value) {
+  const key = String(value || '').trim().toLowerCase().replace(/[\s_-]/g, '');
+  const statuses = {
+    watching: 'watching',
+    reading: 'reading',
+    completed: 'completed',
+    onhold: 'onHold',
+    dropped: 'dropped',
+    plantowatch: 'planToWatch',
+    plantoread: 'planToRead',
+  };
+  return statuses[key] || key || 'unknown';
+}
+
+function normalizeListEntry(entry) {
+  const score = finiteNumber(entry && entry.score);
+  return {
+    id: entry && entry.malId,
+    title: entry && typeof entry.title === 'string' && entry.title.trim()
+      ? entry.title.trim()
+      : 'Untitled',
+    status: normalizeStatus(entry && entry.status),
+    score: score !== null && score > 0 ? score : null,
+    progress: finiteNumber(entry && entry.progress),
+    total: finiteNumber(entry && entry.total),
+    startedAt: entry && entry.startedAt || null,
+    finishedAt: entry && entry.finishedAt || null,
+    updatedAt: entry && entry.updatedAt || null,
+  };
+}
+
+export function normalizeListEntries(entries) {
+  return entries.map(normalizeListEntry);
+}
+
+export function deriveListMetrics(entries) {
+  const statusCounts = {};
+  const scoreCounts = new Map();
+  for (const entry of entries) {
+    statusCounts[entry.status] = (statusCounts[entry.status] || 0) + 1;
+    if (entry.score !== null) {
+      scoreCounts.set(entry.score, (scoreCounts.get(entry.score) || 0) + 1);
+    }
+  }
+
+  const scored = entries
+    .filter((entry) => entry.status === 'completed' && entry.score !== null)
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
+
+  return {
+    statusCounts,
+    distribution: Array.from(scoreCounts, ([score, count]) => ({ score, count }))
+      .sort((a, b) => a.score - b.score),
+    scored,
+  };
+}
+
+async function fetchUserList(username, mediaType, onProgress) {
+  const entries = [];
+  let page = 1;
+  let expectedTotal = null;
+
+  while (page <= MAX_USER_LIST_PAGES) {
+    onProgress('Fetching ' + mediaType + ' list page ' + page + '...');
+    const response = await request(
+      '/users/' + username + '/' + mediaType + 'list?page=' + page + '&limit=' + USER_LIST_PAGE_LIMIT
+    );
+    if (!Array.isArray(response && response.data)) {
+      throw new MalError('MyAnimeList returned an incomplete ' + mediaType + ' list.', 'parse');
+    }
+
+    entries.push(...normalizeListEntries(response.data));
+    const pagination = response.meta && response.meta.pagination;
+    const total = finiteNumber(pagination && pagination.total);
+    if (total !== null) expectedTotal = total;
+
+    const loaded = entries.length;
+    onProgress(
+      'Loaded ' + loaded.toLocaleString() +
+      (expectedTotal === null ? ' ' + mediaType + ' titles.' : ' of ' + expectedTotal.toLocaleString() + ' ' + mediaType + ' titles.')
+    );
+
+    if (!pagination || pagination.hasNextPage !== true) {
+      if (expectedTotal !== null && loaded < expectedTotal) {
+        throw new MalError(
+          'MyAnimeList returned ' + loaded.toLocaleString() + ' of ' + expectedTotal.toLocaleString() +
+            ' ' + mediaType + ' titles. Try again later.',
+          'incomplete_data'
+        );
+      }
+      return entries;
+    }
+
+    page += 1;
+  }
+
+  throw new MalError('MyAnimeList list pagination exceeded the supported page limit.', 'incomplete_data');
+}
+
+function metadataSample(entries) {
+  const unique = new Map();
+  const ordered = [
+    ...entries.filter((entry) => entry.status === 'completed' && entry.score !== null)
+      .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title)),
+    ...entries.filter((entry) => entry.status === 'completed'),
+    ...entries,
+  ];
+
+  for (const entry of ordered) {
+    if (entry.id != null && !unique.has(entry.id)) unique.set(entry.id, entry);
+    if (unique.size >= MAX_TITLE_DETAILS) break;
+  }
+  return Array.from(unique.values());
+}
+
+function aggregateTitleDetails(sample, detailsById) {
+  const genres = new Map();
+  const formats = new Map();
+  const years = new Map();
+
+  for (const entry of sample) {
+    const details = detailsById.get(entry.id);
+    if (!details) continue;
+
+    for (const genre of Array.isArray(details.genres) ? details.genres : []) {
+      if (!genre || !genre.name) continue;
+      const current = genres.get(genre.name) || { name: genre.name, count: 0, scoreTotal: 0, scoredCount: 0 };
+      current.count += 1;
+      if (entry.score !== null) {
+        current.scoreTotal += entry.score * 10;
+        current.scoredCount += 1;
+      }
+      genres.set(genre.name, current);
+    }
+
+    if (details.type) formats.set(details.type, (formats.get(details.type) || 0) + 1);
+    const year = finiteNumber(details.year) || toYear(details.aired && details.aired.from);
+    if (year) years.set(year, (years.get(year) || 0) + 1);
+  }
+
+  return {
+    genres: Array.from(genres.values())
+      .map((genre) => ({
+        name: genre.name,
+        count: genre.count,
+        meanScore: genre.scoredCount ? Math.round(genre.scoreTotal / genre.scoredCount) : null,
+      }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+    formats: Array.from(formats, ([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+    years: Array.from(years, ([year, count]) => ({ year, count }))
+      .sort((a, b) => b.count - a.count || b.year - a.year),
+  };
+}
+
+async function fetchTitleDetails(sample, mediaType, onProgress) {
+  const detailsById = new Map();
+  let warning = '';
+
+  for (let index = 0; index < sample.length; index += 1) {
+    const entry = sample[index];
+    onProgress('Checking title details ' + (index + 1) + ' of ' + sample.length + '...');
+    try {
+      const response = await request('/' + mediaType + '/' + encodeURIComponent(entry.id) + '/full');
+      const details = response && response.data;
+      if (!details) throw new MalError('MyAnimeList returned incomplete title details.', 'parse');
+      detailsById.set(entry.id, details);
+    } catch (error) {
+      if (!(error instanceof MalError)) throw error;
+      if (error.code === 'not_found') continue;
+      warning = 'Some MyAnimeList title details could not be loaded: ' + error.message;
+      break;
+    }
+  }
+
+  return { detailsById, warning };
+}
+
+export async function fetchProfile(username, mediaType = 'anime', onProgress = () => {}) {
   const media = resolveMediaType(mediaType);
   const name = String(username == null ? '' : username).trim();
   if (!name) throw new MalError('Enter a MyAnimeList username first.', 'empty_input');
@@ -117,6 +304,12 @@ export async function fetchProfile(username, mediaType = 'anime') {
     throw new MalError('MyAnimeList returned an incomplete user profile.', 'parse');
   }
 
+  const entries = await fetchUserList(encodedName, media.id, onProgress);
+  const listMetrics = deriveListMetrics(entries);
+  const sample = metadataSample(entries);
+  const titleDetailResult = await fetchTitleDetails(sample, media.id, onProgress);
+  const titleDetails = aggregateTitleDetails(sample, titleDetailResult.detailsById);
+
   const stats = profileData.statistics && profileData.statistics[media.id]
     ? profileData.statistics[media.id]
     : {};
@@ -128,14 +321,22 @@ export async function fetchProfile(username, mediaType = 'anime') {
         genres: [],
       }))
     : [];
-  const days = Number(media.id === 'anime' ? stats.daysWatched : stats.daysRead);
-  const validDays = Number.isFinite(days) ? days : null;
+  const validDays = finiteNumber(media.id === 'anime' ? stats.daysWatched : stats.daysRead);
   const hours = media.id === 'anime' && validDays !== null ? Math.round(validDays * 24) : null;
-  const rawMeanScore = Number(stats.meanScore);
+  const rawMeanScore = finiteNumber(stats.meanScore);
   const meanScoreRaw =
     Number.isFinite(rawMeanScore) && rawMeanScore > 0
       ? rawMeanScore
       : null;
+  const summaryCount = finiteNumber(stats.totalEntries);
+  const dataWarnings = [];
+  if (summaryCount !== null && summaryCount !== entries.length) {
+    dataWarnings.push(
+      'MyAnimeList reports ' + summaryCount.toLocaleString() + ' titles, while its list returned ' +
+        entries.length.toLocaleString() + '. List sections use the returned entries.'
+    );
+  }
+  if (titleDetailResult.warning) dataWarnings.push(titleDetailResult.warning);
 
   return {
     source: 'MyAnimeList',
@@ -144,7 +345,7 @@ export async function fetchProfile(username, mediaType = 'anime') {
     name: user.username,
     url: user.profileUrl,
     memberSince: user.joinedAt ? new Date(user.joinedAt).getFullYear() : null,
-    count: Number(stats.totalEntries) || 0,
+    count: entries.length,
     episodes: media.id === 'anime' ? Number(stats.episodesWatched) || 0 : null,
     chapters: media.id === 'manga' ? Number(stats.chaptersRead) || 0 : null,
     volumes: media.id === 'manga' ? Number(stats.volumesRead) || 0 : null,
@@ -155,15 +356,33 @@ export async function fetchProfile(username, mediaType = 'anime') {
     meanScore: meanScoreRaw === null ? null : Math.round(meanScoreRaw * 10),
     meanScoreRaw,
     deviation: null,
-    genres: [],
-    formats: [],
-    years: [],
-    distribution: [],
+    genres: titleDetails.genres,
+    genreSampleSize: titleDetailResult.detailsById.size,
+    genrePopulationSize: entries.length,
+    genresSampled: titleDetailResult.detailsById.size < entries.length,
+    formats: titleDetails.formats,
+    years: titleDetails.years,
+    distribution: listMetrics.distribution,
+    statusCounts: listMetrics.statusCounts,
+    listEntries: entries,
     favourites: favorites,
     favoritesAvailable: true,
     favoritesError: null,
-    scored: [],
-    isSparse: (Number(stats.totalEntries) || 0) < 10,
+    scored: listMetrics.scored.map((entry) => {
+      const details = titleDetailResult.detailsById.get(entry.id);
+      const average = finiteNumber(details && details.score);
+      return {
+        id: entry.id,
+        title: entry.title,
+        score: entry.score,
+        average: average !== null && average > 0 ? Math.round(average * 10) : null,
+        genres: details && Array.isArray(details.genres)
+          ? details.genres.map((genre) => genre.name).filter(Boolean)
+          : [],
+      };
+    }),
+    dataWarning: dataWarnings.join(' '),
+    isSparse: entries.length < 10,
   };
 }
 
