@@ -84,6 +84,41 @@ const MIGRATIONS = [
       );
     `);
   },
+  (db) => {
+    db.exec(`
+      CREATE TABLE rate_limits (
+        key TEXT PRIMARY KEY,
+        count INTEGER NOT NULL,
+        reset_at INTEGER NOT NULL
+      );
+    `);
+  },
+  (db) => {
+    db.exec(`
+      ALTER TABLE sessions ADD COLUMN last_seen_at TEXT;
+      CREATE INDEX sessions_last_seen_idx ON sessions (last_seen_at);
+
+      ALTER TABLE users ADD COLUMN email_verified_at TEXT;
+
+      CREATE TABLE password_reset_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT
+      );
+
+      CREATE TABLE email_verification_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT
+      );
+    `);
+  },
 ];
 
 function nowIso() {
@@ -178,6 +213,7 @@ export function createSession(db, { userId, tokenHash, expiresAt, userAgent = nu
     token_hash: tokenHash,
     created_at: at,
     expires_at: expiresAt,
+    last_seen_at: at,
     user_agent: userAgent,
     ip,
   });
@@ -188,6 +224,17 @@ export function getSessionByTokenHash(db, tokenHash) {
   const row = db.prepare('SELECT * FROM sessions WHERE token_hash = ?').get(tokenHash) || null;
   if (row && row.expires_at < nowIso()) return null;
   return row;
+}
+
+/** Idle timeout: sessions unused for longer than idleMs are dead, even if the
+   absolute expiry is still in the future. */
+export function isSessionIdle(db, session, idleMs, now = Date.now()) {
+  if (!session.last_seen_at) return false;
+  return Date.parse(session.last_seen_at) + idleMs < now;
+}
+
+export function touchSession(db, id, at = nowIso()) {
+  db.prepare('UPDATE sessions SET last_seen_at = ? WHERE id = ?').run(at, id);
 }
 
 export function deleteSessionByTokenHash(db, tokenHash) {
@@ -205,6 +252,18 @@ export function pruneExpiredSessions(db) {
 export function countActiveSessions(db, userId) {
   return db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND expires_at > ?')
     .get(userId, nowIso()).n;
+}
+
+export function listSessionsForUser(db, userId) {
+  return db.prepare(`
+    SELECT id, created_at, expires_at, last_seen_at, user_agent, ip
+    FROM sessions WHERE user_id = ? AND expires_at > ?
+    ORDER BY created_at DESC
+  `).all(userId, nowIso());
+}
+
+export function getSessionById(db, id) {
+  return db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) || null;
 }
 
 /* ----------------------------------------------------------- wrapped sync */
@@ -266,6 +325,80 @@ export function listGuessProgress(db, userId, mediaType = null) {
     score: row.score,
     won: row.won === 1,
   }));
+}
+
+export function markEmailVerified(db, userId) {
+  db.prepare('UPDATE users SET email_verified_at = ?, updated_at = ? WHERE id = ?')
+    .run(nowIso(), nowIso(), userId);
+}
+
+/* -------------------------------------------------------- reset / verify */
+
+export function createResetToken(db, userId, tokenHash, expiresAt) {
+  db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ? AND used_at IS NULL').run(userId);
+  const at = nowIso();
+  insert(db, 'password_reset_tokens', {
+    user_id: userId,
+    token_hash: tokenHash,
+    created_at: at,
+    expires_at: expiresAt,
+  });
+}
+
+export function findResetToken(db, tokenHash) {
+  return db.prepare('SELECT * FROM password_reset_tokens WHERE token_hash = ?').get(tokenHash) || null;
+}
+
+export function useResetToken(db, tokenHash) {
+  db.prepare('UPDATE password_reset_tokens SET used_at = ? WHERE token_hash = ?').run(nowIso(), tokenHash);
+}
+
+export function createVerifyToken(db, userId, tokenHash, expiresAt) {
+  db.prepare('DELETE FROM email_verification_tokens WHERE user_id = ? AND used_at IS NULL').run(userId);
+  insert(db, 'email_verification_tokens', {
+    user_id: userId,
+    token_hash: tokenHash,
+    created_at: nowIso(),
+    expires_at: expiresAt,
+  });
+}
+
+export function findVerifyToken(db, tokenHash) {
+  return db.prepare('SELECT * FROM email_verification_tokens WHERE token_hash = ?').get(tokenHash) || null;
+}
+
+export function useVerifyToken(db, tokenHash) {
+  db.prepare('UPDATE email_verification_tokens SET used_at = ? WHERE token_hash = ?')
+    .run(nowIso(), tokenHash);
+}
+
+/* -------------------------------------------------------- rate limits */
+
+export function consumeRateLimit(db, key, windowMs, max, now = Date.now()) {
+  db.exec('BEGIN');
+  try {
+    const row = db.prepare('SELECT count, reset_at FROM rate_limits WHERE key = ?').get(key) || null;
+    let result;
+    if (!row || row.reset_at <= now) {
+      db.prepare('INSERT INTO rate_limits (key, count, reset_at) VALUES (?, 1, ?) ON CONFLICT (key) DO UPDATE SET count = 1, reset_at = excluded.reset_at')
+        .run(key, now + windowMs);
+      result = { allowed: true, retryAfterMs: 0 };
+    } else if (row.count >= max) {
+      result = { allowed: false, retryAfterMs: row.reset_at - now };
+    } else {
+      db.prepare('UPDATE rate_limits SET count = count + 1 WHERE key = ?').run(key);
+      result = { allowed: true, retryAfterMs: 0 };
+    }
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+export function pruneRateLimits(db, now = Date.now()) {
+  db.prepare('DELETE FROM rate_limits WHERE reset_at <= ?').run(now);
 }
 
 /* --------------------------------------------------------------- helpers */

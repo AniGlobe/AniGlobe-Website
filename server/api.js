@@ -26,31 +26,51 @@ import {
   clientIp,
 } from './http.js';
 import { hashPassword, verifyPassword, dummyVerify } from './passwords.js';
+import { resetPasswordMail, verifyEmailMail, sendMail, originOf } from './mail.js';
 import {
+  createResetToken,
   createSession,
   createUser,
+  createVerifyToken,
   deleteAllSessionsForUser,
   deleteSessionByTokenHash,
   deleteTemplate,
   deleteUser,
+  findResetToken,
+  findVerifyToken,
   getSessionByTokenHash,
   getUserByEmail,
   getUserById,
   getUserByUsername,
+  isSessionIdle,
   listGuessProgress,
+  listSessionsForUser,
   listTemplates,
   loadWrappedPrefs,
+  markEmailVerified,
   pruneExpiredSessions,
   saveGuessProgress,
   saveWrappedPrefs,
   touchLogin,
+  touchSession,
   updateUserPassword,
   upsertTemplate,
+  useResetToken,
+  useVerifyToken,
   countActiveSessions,
+  getSessionById,
 } from './db.js';
 
 const SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+const SESSION_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
 const SESSION_LIFETIME_SECONDS = Math.floor(SESSION_LIFETIME_MS / 1000);
+const RESET_TOKEN_LIFETIME_MS = 60 * 60 * 1000;
+const VERIFY_TOKEN_LIFETIME_MS = 24 * 60 * 60 * 1000;
+
+/** Structured security events (JSON to stderr). The database never logs secrets. */
+function logEvent(event, fields = {}) {
+  process.stderr.write(`[aniglobe-security] ${JSON.stringify({ event, ts: new Date().toISOString(), ...fields })}\n`);
+}
 
 function publicUser(user) {
   return {
@@ -58,6 +78,7 @@ function publicUser(user) {
     username: user.username,
     email: user.email,
     createdAt: user.created_at,
+    verified: Boolean(user.email_verified_at),
   };
 }
 
@@ -66,13 +87,25 @@ function toUserSafe(row) {
   return publicUser(safe);
 }
 
+let lastTouchAt = 0;
+
 function resolveSession(db, req) {
   const token = getSessionToken(req);
   if (!token) return null;
   const session = getSessionByTokenHash(db, sha256Hex(token));
   if (!session) return null;
+  if (isSessionIdle(db, session, SESSION_IDLE_MS)) {
+    deleteSessionByTokenHash(db, sha256Hex(token));
+    return null;
+  }
   const user = getUserById(db, session.user_id);
   if (!user) return null;
+  // Slide the idle window, at most once every five minutes per process.
+  const current = Date.now();
+  if (!session.last_seen_at || current - lastTouchAt > 5 * 60 * 1000) {
+    lastTouchAt = current;
+    touchSession(db, session.id, new Date(current).toISOString());
+  }
   return { user, session, token };
 }
 
@@ -114,7 +147,19 @@ function destroySession(db, req, res) {
  * Build the API router. dependencies: { db, authLimiters } — split out so the
  * server entry and the tests construct the same routes the same way.
  */
-export function createApiRouter({ db, registerLimiter, loginLimiter }) {
+export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimiter, mailer = sendMail }) {
+
+  function mailVerifyToken(req, user, token) {
+    const url = `${originOf(req)}#/verify?token=${encodeURIComponent(token)}`;
+    return mailer(verifyEmailMail(user.email, url));
+  }
+
+  function issueVerifyToken(req, user) {
+    const token = randomToken(32);
+    const expiresAt = new Date(Date.now() + VERIFY_TOKEN_LIFETIME_MS).toISOString();
+    createVerifyToken(db, user.id, sha256Hex(token), expiresAt);
+    return token;
+  }
 
   async function register(req, res) {
     const gate = registerLimiter.consume(clientIp(req));
@@ -144,6 +189,9 @@ export function createApiRouter({ db, registerLimiter, loginLimiter }) {
       email: email.value,
       passwordHash: hashPassword(password.value),
     });
+    const token = issueVerifyToken(req, user);
+    mailVerifyToken(req, user, token).catch((error) => logEvent('verify_mail_failed', { userId: user.id, error: error.message }));
+    logEvent('register', { userId: user.id, ip: clientIp(req) });
     issueSession(db, req, res, user);
     json(res, 201, { user: publicUser(user) });
   }
@@ -165,12 +213,15 @@ export function createApiRouter({ db, registerLimiter, loginLimiter }) {
 
     if (!user) {
       dummyVerify(password); // equalize timing
+      logEvent('login_failed', { identifier: identifier.slice(0, 32), reason: 'no_such_user', ip: clientIp(req) });
       throw new HttpError(401, 'Those credentials do not match any account.');
     }
     if (!verifyPassword(password, user.password_hash)) {
+      logEvent('login_failed', { userId: user.id, reason: 'wrong_password', ip: clientIp(req) });
       throw new HttpError(401, 'Those credentials do not match any account.');
     }
 
+    logEvent('login_success', { userId: user.id, ip: clientIp(req) });
     issueSession(db, req, res, user);
     json(res, 200, { user: publicUser(user) });
   }
@@ -211,6 +262,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter }) {
     }
     updateUserPassword(db, user.id, hashPassword(next.value));
     deleteAllSessionsForUser(db, user.id); // every device signs out; this one re-issues below
+    logEvent('password_changed', { userId: user.id });
     issueSession(db, req, res, user);
     json(res, 200, { ok: true });
   }
@@ -223,8 +275,135 @@ export function createApiRouter({ db, registerLimiter, loginLimiter }) {
       throw new HttpError(403, 'Enter your password to delete your account.', { field: 'password' });
     }
     deleteUser(db, user.id);
+    logEvent('account_deleted', { userId: user.id });
     destroySession(db, req, res);
     json(res, 200, { ok: true });
+  }
+
+  async function resetRequest(req, res) {
+    // Always answers 200 — revealing whether an email exists would hand out
+    // a user-enumeration oracle.
+    const body = await readJsonBody(req);
+    const email = validateEmail(body.email);
+    if (email.error) {
+      json(res, 200, { ok: true });
+      return;
+    }
+    const gate = resetLimiter.consume(clientIp(req) + ':' + email.value);
+    if (!gate.allowed) {
+      json(res, 200, { ok: true });
+      return;
+    }
+    const user = getUserByEmail(db, email.value);
+    if (user) {
+      const token = randomToken(32);
+      const expiresAt = new Date(Date.now() + RESET_TOKEN_LIFETIME_MS).toISOString();
+      createResetToken(db, user.id, sha256Hex(token), expiresAt);
+      const url = `${originOf(req)}#/reset?token=${encodeURIComponent(token)}`;
+      mailer(resetPasswordMail(user.email, url)).catch((error) => logEvent('reset_mail_failed', { userId: user.id, error: error.message }));
+      logEvent('password_reset_requested', { userId: user.id });
+    }
+    json(res, 200, { ok: true });
+  }
+
+  async function resetConfirm(req, res) {
+    const body = await readJsonBody(req);
+    const token = String(body.token == null ? '' : body.token).trim();
+    if (!token) throw new HttpError(400, 'Include the reset token from your email.');
+    const row = findResetToken(db, sha256Hex(token));
+    if (!row || row.used_at !== null || row.expires_at < new Date().toISOString()) {
+      logEvent('password_reset_failed', { reason: row ? 'expired_or_used' : 'unknown_token' });
+      throw new HttpError(400, 'This reset link is invalid or expired. Request a new one.');
+    }
+    const next = validatePassword(body.newPassword);
+    if (next.error) throw new HttpError(400, next.error, { field: 'newPassword' });
+    updateUserPassword(db, row.user_id, hashPassword(next.value));
+    useResetToken(db, sha256Hex(token));
+    markEmailVerified(db, row.user_id);
+    deleteAllSessionsForUser(db, row.user_id);
+    logEvent('password_reset_completed', { userId: row.user_id });
+    json(res, 200, { ok: true });
+  }
+
+  async function verifyConfirm(req, res) {
+    const body = await readJsonBody(req);
+    const token = String(body.token == null ? '' : body.token).trim();
+    if (!token) throw new HttpError(400, 'Include the verification token from your email.');
+    const row = findVerifyToken(db, sha256Hex(token));
+    if (!row || row.used_at !== null || row.expires_at < new Date().toISOString()) {
+      logEvent('verify_failed', { reason: row ? 'expired_or_used' : 'unknown_token' });
+      throw new HttpError(400, 'This verification link is invalid or expired. Request a new one.');
+    }
+    markEmailVerified(db, row.user_id);
+    useVerifyToken(db, sha256Hex(token));
+    logEvent('verify_completed', { userId: row.user_id });
+    json(res, 200, { ok: true });
+  }
+
+  async function verifyResend(req, res) {
+    requireCsrf(req);
+    const { user } = requireSession(db, req);
+    if (user.email_verified_at) {
+      json(res, 200, { ok: true });
+      return;
+    }
+    const gate = resetLimiter.consume('verify:' + user.id);
+    if (!gate.allowed) {
+      json(res, 200, { ok: true });
+      return;
+    }
+    const token = issueVerifyToken(req, user);
+    mailVerifyToken(req, user, token).catch((error) => logEvent('verify_resend_failed', { userId: user.id, error: error.message }));
+    json(res, 200, { ok: true });
+  }
+
+  async function listSessions(req, res) {
+    const { user, session } = requireSession(db, req);
+    const rows = listSessionsForUser(db, user.id);
+    json(res, 200, {
+      sessions: rows.map((row) => ({
+        id: row.id,
+        createdAt: row.created_at,
+        lastSeenAt: row.last_seen_at,
+        ip: row.ip,
+        userAgent: row.user_agent,
+        current: row.id === session.id,
+      })),
+    });
+  }
+
+  async function revokeSession(req, res, id) {
+    requireCsrf(req);
+    const { user } = requireSession(db, req);
+    const target = getSessionById(db, Number(id));
+    if (!target || target.user_id !== user.id) throw new HttpError(404, 'That session does not exist.');
+    deleteSessionByTokenHash(db, target.token_hash);
+    logEvent('session_revoked', { userId: user.id, sessionId: target.id });
+    json(res, 200, { ok: true });
+  }
+
+  async function revokeAllSessions(req, res) {
+    requireCsrf(req);
+    const { user } = requireSession(db, req);
+    deleteAllSessionsForUser(db, user.id);
+    logEvent('sessions_revoked_all', { userId: user.id });
+    const secure = process.env.NODE_ENV === 'production';
+    res.setHeader('Set-Cookie', clearSessionCookie({ secure }));
+    json(res, 200, { ok: true });
+  }
+
+  async function dataExport(req, res) {
+    const { user } = requireSession(db, req);
+    const prefs = loadWrappedPrefs(db, user.id);
+    res.setHeader('Content-Disposition', `attachment; filename="aniglobe-export-${user.username.toLowerCase()}.json"`);
+    json(res, 200, {
+      exportedAt: new Date().toISOString(),
+      user: publicUser(user),
+      wrappedPrefs: prefs ? prefs.payload : null,
+      templates: listTemplates(db, user.id),
+      guessProgress: listGuessProgress(db, user.id),
+      activeSessionCount: countActiveSessions(db, user.id),
+    });
   }
 
   function shapePrefs(payload) {
@@ -298,6 +477,13 @@ export function createApiRouter({ db, registerLimiter, loginLimiter }) {
     ['/api/auth/me', { GET: me }],
     ['/api/auth/password', { POST: changePassword }],
     ['/api/auth/account', { DELETE: deleteAccount }],
+    ['/api/auth/password-reset/request', { POST: resetRequest }],
+    ['/api/auth/password-reset/confirm', { POST: resetConfirm }],
+    ['/api/auth/verify/confirm', { POST: verifyConfirm }],
+    ['/api/auth/verify/resend', { POST: verifyResend }],
+    ['/api/auth/sessions', { GET: listSessions }],
+    ['/api/auth/sessions/revoke-all', { POST: revokeAllSessions }],
+    ['/api/auth/export', { GET: dataExport }],
     ['/api/sync/wrapped-prefs', { GET: wrappedPrefs, POST: wrappedPrefs }],
     ['/api/sync/guess', { GET: guess, POST: guess }],
   ]);
@@ -310,6 +496,26 @@ export function createApiRouter({ db, registerLimiter, loginLimiter }) {
       const rest = pathname.slice('/api/sync/templates'.length).split('/').filter(Boolean);
       await templates(req, res, rest);
       return;
+    }
+
+    if (pathname === '/api/auth/sessions/revoke-all' || pathname.startsWith('/api/auth/sessions/')) {
+      const idPart = pathname.slice('/api/auth/sessions/'.length);
+      const match = idPart.match(/^(\d+)$/);
+      if (match && req.method === 'DELETE') {
+        const { user } = requireSession(db, req);
+        requireCsrf(req);
+        const target = getSessionById(db, Number(match[1]));
+        if (!target || target.user_id !== user.id) throw new HttpError(404, 'That session does not exist.');
+        deleteSessionByTokenHash(db, target.token_hash);
+        logEvent('session_revoked', { userId: user.id, sessionId: target.id });
+        json(res, 200, { ok: true });
+        return;
+      }
+      if (pathname === '/api/auth/sessions/revoke-all' && req.method === 'POST') {
+        await revokeAllSessions(req, res);
+        return;
+      }
+      throw new HttpError(404, 'Unknown endpoint.');
     }
 
     const entry = routes.get(pathname);

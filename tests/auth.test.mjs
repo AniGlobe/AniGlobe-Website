@@ -11,12 +11,15 @@ import { hashPassword, verifyPassword } from '../server/passwords.js';
  * a tiny client that mimics a browser: it keeps cookies and echoes the CSRF
  * value, which is exactly the surface a malicious client would fuzz.
  */
-async function startTestServer() {
+async function startTestServer({ mail = null } = {}) {
   const db = openDatabase(':memory:');
+  const outbox = [];
   const api = createApiRouter({
     db,
     registerLimiter: { consume: () => ({ allowed: true, retryAfterMs: 0 }) },
     loginLimiter: { consume: () => ({ allowed: true, retryAfterMs: 0 }) },
+    resetLimiter: { consume: () => ({ allowed: true, retryAfterMs: 0 }) },
+    mailer: mail || (async (message) => { outbox.push(message); }),
   });
   const server = createServer(async (req, res) => {
     try {
@@ -39,6 +42,7 @@ async function startTestServer() {
     db,
     server,
     base: `http://127.0.0.1:${port}`,
+    outbox,
     close: () => new Promise((resolve) => server.close(resolve)),
   };
 }
@@ -308,6 +312,149 @@ test('password change requires the current password and re-issues the session', 
     const other = makeClient(base);
     assert.equal((await other.post('/api/auth/login', { identifier: 'Changer', password: GOOD_PASSWORD })).status, 401);
     assert.equal((await other.post('/api/auth/login', { identifier: 'Changer', password: 'Brand-New-Password-1!' })).status, 200);
+  } finally {
+    await close();
+  }
+});
+
+test('sessions: list, revoke one of two, revoke everywhere', async () => {
+  const { base, close } = await startTestServer();
+  try {
+    const phone = makeClient(base);
+    const tab = makeClient(base);
+    await phone.post('/api/auth/register', {
+      username: 'TwoDevice',
+      email: 'twodevice@example.com',
+      password: GOOD_PASSWORD,
+    });
+    await tab.post('/api/auth/login', { identifier: 'TwoDevice', password: GOOD_PASSWORD });
+
+    const listed = await phone.get('/api/auth/sessions');
+    assert.equal(listed.status, 200);
+    assert.equal(listed.json.sessions.length, 2);
+    assert.equal(listed.json.sessions.filter((s) => s.current).length, 1);
+
+    const otherId = listed.json.sessions.find((s) => !s.current).id;
+    const revoked = await phone.del('/api/auth/sessions/' + otherId);
+    assert.equal(revoked.status, 200);
+    assert.equal((await phone.get('/api/auth/sessions')).json.sessions.length, 1);
+
+    // The other device is now signed out.
+    assert.equal((await tab.get('/api/auth/me')).json.user, null);
+
+    // Unknown session id 404s; another user's session cannot be revoked.
+    const notFound = await phone.del('/api/auth/sessions/999999');
+    assert.equal(notFound.status, 404);
+
+    const nuked = await phone.post('/api/auth/sessions/revoke-all', {});
+    assert.equal(nuked.status, 200);
+    assert.equal((await phone.get('/api/auth/me')).json.user, null);
+  } finally {
+    await close();
+  }
+});
+
+test('password reset: request never reveals whether the email exists', async () => {
+  const { base, outbox, close } = await startTestServer();
+  try {
+    const client = makeClient(base);
+    await client.post('/api/auth/register', {
+      username: 'Resettable',
+      email: 'resettable@example.com',
+      password: GOOD_PASSWORD,
+    });
+    client.clearCookies();
+
+    // Existing email gets mail; unknown email answers identically with no mail.
+    const existing = await client.post('/api/auth/password-reset/request', { email: 'resettable@example.com' });
+    assert.equal(existing.status, 200);
+    assert.equal(existing.json.ok, true);
+    const resetMail = outbox.find((m) => m.subject.startsWith('Reset your'));
+    assert.ok(resetMail, 'a reset email was queued');
+    assert.equal(resetMail.to, 'resettable@example.com');
+
+    const resetCount = outbox.filter((m) => m.subject.startsWith('Reset your')).length;
+    const missing = await client.post('/api/auth/password-reset/request', { email: 'ghost@example.com' });
+    assert.equal(missing.status, 200);
+    assert.equal(missing.json.ok, true);
+    assert.equal(outbox.filter((m) => m.subject.startsWith('Reset your')).length, resetCount, 'no mail for unknown email');
+
+    const match = resetMail.text.match(/token=([^&\s]+)/);
+    assert.ok(match, 'reset link carries the token');
+    const stranger = makeClient(base);
+    const confirmed = await stranger.post('/api/auth/password-reset/confirm', {
+      token: decodeURIComponent(match[1]),
+      newPassword: 'Reset-Password-77!',
+    });
+    assert.equal(confirmed.status, 200);
+
+    // Old password rejected, new one works.
+    assert.equal((await stranger.post('/api/auth/login', { identifier: 'Resettable', password: GOOD_PASSWORD })).status, 401);
+    assert.equal((await stranger.post('/api/auth/login', { identifier: 'Resettable', password: 'Reset-Password-77!' })).status, 200);
+
+    // Reusing the token fails.
+    assert.equal((await stranger.post('/api/auth/password-reset/confirm', {
+      token: decodeURIComponent(match[1]),
+      newPassword: 'Another-Password-1!',
+    })).status, 400);
+  } finally {
+    await close();
+  }
+});
+
+test('email verification: register sends a link, confirm marks verified', async () => {
+  const { base, outbox, close } = await startTestServer();
+  try {
+    const client = makeClient(base);
+    const registered = await client.post('/api/auth/register', {
+      username: 'Verifiable',
+      email: 'verifiable@example.com',
+      password: GOOD_PASSWORD,
+    });
+    assert.equal(registered.json.user.verified, false);
+    const verifyMail = outbox.find((m) => m.subject.startsWith('Confirm your email'));
+    assert.ok(verifyMail, 'a verification email was queued');
+    assert.equal(verifyMail.to, 'verifiable@example.com');
+
+    const tokenMatch = verifyMail.text.match(/token=([^&\s]+)/);
+    assert.ok(tokenMatch);
+    const confirmed = await client.post('/api/auth/verify/confirm', {
+      token: decodeURIComponent(tokenMatch[1]),
+    });
+    assert.equal(confirmed.status, 200);
+    assert.equal((await client.get('/api/auth/me')).json.user.verified, true);
+
+    // Resend is a no-op for already-verified users (200 either way).
+    const resend = await client.post('/api/auth/verify/resend', {});
+    assert.equal(resend.status, 200);
+  } finally {
+    await close();
+  }
+});
+
+test('data export bundles the account record and synced data', async () => {
+  const { base, close } = await startTestServer();
+  try {
+    const client = makeClient(base);
+    await client.post('/api/auth/register', {
+      username: 'Exporter',
+      email: 'exporter@example.com',
+      password: GOOD_PASSWORD,
+    });
+    await client.post('/api/sync/wrapped-prefs', { prefs: { theme: 'ember' } });
+    await client.post('/api/sync/templates', { name: 'Ember plum', payload: { theme: 'ember' } });
+    await client.post('/api/sync/guess', { mediaType: 'anime', dayIndex: 20901, score: 440, won: true });
+
+    const exported = await client.get('/api/auth/export');
+    assert.equal(exported.status, 200);
+    assert.equal(exported.json.user.username, 'Exporter');
+    assert.equal(exported.json.wrappedPrefs.theme, 'ember');
+    assert.deepEqual(exported.json.templates.map((t) => t.name), ['Ember plum']);
+    assert.equal(exported.json.guessProgress.length, 1);
+    assert.equal(exported.json.activeSessionCount, 1);
+
+    const anonymous = makeClient(base);
+    assert.equal((await anonymous.get('/api/auth/export')).status, 401);
   } finally {
     await close();
   }

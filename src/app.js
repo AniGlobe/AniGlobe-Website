@@ -10,6 +10,7 @@ import { site, tools, resolveToolId, defaultToolId } from './config.js';
 import { el, render } from './lib.js';
 import { getSession, logout, onSessionChange, refreshSession } from './auth.js';
 import { createAuthDialog } from './tools/auth-dialog.js';
+import { renderReset, renderVerify } from './tools/auth-links.js';
 
 const dom = {
   topbarBrand: document.querySelector('.topbar-brand'),
@@ -166,6 +167,22 @@ function renderFailure(message) {
 }
 
 async function mountRoute() {
+  const rawHash = String(window.location.hash || '');
+  const rawPath = rawHash.charAt(0) === '#' ? rawHash.slice(1) : rawHash;
+  const cleanPath = rawPath.split('?')[0];
+  if (rawPath.startsWith('/verify')) {
+    render(dom.app);
+    renderVerify(dom.app);
+    dom.app.focus({ preventScroll: true });
+    return;
+  }
+  if (rawPath.startsWith('/reset')) {
+    render(dom.app);
+    renderReset(dom.app);
+    dom.app.focus({ preventScroll: true });
+    return;
+  }
+
   const toolId = resolveToolId(window.location.hash);
   const entry = tools.find((tool) => tool.id === toolId) || tools[0];
   const token = ++mountToken;

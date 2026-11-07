@@ -113,6 +113,8 @@ export function createAuthDialog() {
         const email = document.getElementById('auth-email').value.trim();
         const password = document.getElementById('auth-password').value;
         await register({ username, email, password });
+        setStatus(status, 'Account created. We sent a confirmation link to ' + email + ' — confirm your email to unlock the account page.', 'success');
+        await new Promise((resolve) => setTimeout(resolve, 1600));
       }
       closeDialog();
     } catch (error) {

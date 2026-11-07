@@ -1,25 +1,39 @@
 /**
- * In-memory fixed-window rate limiter for auth endpoints.
+ * Persisted rate limiter backed by SQLite (server/db.js -> rate_limits).
  *
- * Per key: { count, resetAt }. When the window expires the counter restarts.
- * This is a single-process limiter — correct for the current deployment.
- * If AniGlobe ever runs multi-instance, this moves to the database / a shared
- * store with the same interface (consume(key) -> {allowed, retryAfterMs}).
+ * Backs the in-memory limiter from the original build: counters now survive
+ * restarts and are consistent for every request the single process serves.
+ * The consume() interface is unchanged so routes keep working as before.
  */
 
-export function createRateLimiter({ windowMs = 15 * 60 * 1000, max = 10, now = () => Date.now() } = {}) {
-  const buckets = new Map();
+import { consumeRateLimit, pruneRateLimits } from './db.js';
 
-  function prune(current) {
-    for (const [key, bucket] of buckets) {
-      if (bucket.resetAt <= current) buckets.delete(key);
-    }
-  }
+export function createDbRateLimiter({ db, windowMs = 15 * 60 * 1000, max = 10, pruneOnUse = true } = {}) {
+  let lastPrune = 0;
+  const now = () => Date.now();
 
   return {
     consume(key) {
       const current = now();
-      prune(current);
+      if (pruneOnUse && current - lastPrune > 60 * 1000) {
+        lastPrune = current;
+        pruneRateLimits(db, current);
+      }
+      return consumeRateLimit(db, key, windowMs, max, current);
+    },
+  };
+}
+
+/** In-memory variant kept for unit tests that do not need a database. */
+export function createMemoryRateLimiter({ windowMs = 15 * 60 * 1000, max = 10, now = () => Date.now() } = {}) {
+  const buckets = new Map();
+
+  return {
+    consume(key) {
+      const current = now();
+      for (const [k, bucket] of buckets) {
+        if (bucket.resetAt <= current) buckets.delete(k);
+      }
       const existing = buckets.get(key);
       if (!existing || existing.resetAt <= current) {
         buckets.set(key, { count: 1, resetAt: current + windowMs });
@@ -30,10 +44,6 @@ export function createRateLimiter({ windowMs = 15 * 60 * 1000, max = 10, now = (
       }
       existing.count += 1;
       return { allowed: true, retryAfterMs: 0 };
-    },
-
-    clear() {
-      buckets.clear();
     },
   };
 }

@@ -1813,3 +1813,37 @@ html.wrapped-dialog-open { overflow: hidden; }
 .btn-danger:hover:not(:disabled) { background: rgba(229, 72, 77, 0.1); }
 
 .topbar-actions { display: flex; align-items: center; gap: var(--s2); }
+
+/* ---------- account page: devices, verification, link pages ---------- */
+
+.account-stack { display: grid; gap: var(--s4); }
+
+.account-verified,
+.account-unverified {
+  display: inline-block;
+  margin-left: var(--s2);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  vertical-align: 1px;
+}
+.account-verified { background: var(--pill-positive-bg); color: var(--pill-positive-ink); }
+.account-unverified { background: var(--pill-warning-bg); color: var(--pill-warning-ink); }
+
+.account-verify-row { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s1); }
+
+.account-sessions { display: grid; gap: var(--s2); list-style: none; margin: 0; padding: 0; }
+.account-session {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center; gap: var(--s2) var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.account-session-label { font-size: var(--fs-small); min-width: 0; overflow-wrap: anywhere; }
+.account-session-last { font-size: var(--fs-micro); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.account-session .btn { min-height: 36px; }
+
+.auth-link-panel { max-width: 560px; }
+.auth-link-form { display: grid; gap: var(--s3); max-width: 420px; }

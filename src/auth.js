@@ -119,6 +119,75 @@ export async function deleteAccount(password) {
   setSession(null);
 }
 
+export async function requestPasswordReset(email) {
+  const { status, json } = await request('/api/auth/password-reset/request', {
+    method: 'POST',
+    body: { email },
+  });
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not request a reset.', json && json.details);
+  return true;
+}
+
+export async function confirmPasswordReset(token, newPassword) {
+  const { status, json } = await request('/api/auth/password-reset/confirm', {
+    method: 'POST',
+    body: { token, newPassword },
+  });
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not reset the password.', json && json.details);
+  return true;
+}
+
+export async function confirmVerification(token) {
+  const { status, json } = await request('/api/auth/verify/confirm', {
+    method: 'POST',
+    body: { token },
+  });
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not confirm the email.', json && json.details);
+  return true;
+}
+
+export async function resendVerification() {
+  const { status, json } = await request('/api/auth/verify/resend', { method: 'POST', body: {} });
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not resend the email.', json && json.details);
+  return true;
+}
+
+export async function listSessions() {
+  if (!getSession()) return [];
+  const { status, json } = await request('/api/auth/sessions');
+  return status === 200 && json && Array.isArray(json.sessions) ? json.sessions : [];
+}
+
+export async function revokeSession(id) {
+  const { status, json } = await request('/api/auth/sessions/' + encodeURIComponent(id), { method: 'DELETE' });
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not revoke that session.', json && json.details);
+}
+
+export async function revokeAllSessions() {
+  const { status, json } = await request('/api/auth/sessions/revoke-all', { method: 'POST', body: {} });
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not sign out everywhere.', json && json.details);
+  setSession(null);
+}
+
+export async function exportData() {
+  if (!getSession()) throw new AuthError('You need to log in first.');
+  const csrf = readCsrf();
+  const headers = {};
+  if (csrf) headers['x-csrf-token'] = csrf;
+  const response = await fetch('/api/auth/export', { headers, credentials: 'same-origin' });
+  const json = await response.json().catch(() => null);
+  if (response.status >= 400) throw new AuthError((json && json.error) || 'Could not export your data.', json && json.details);
+  const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'aniglobe-export.json';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export class AuthError extends Error {
   constructor(message, details = null) {
     super(message);
