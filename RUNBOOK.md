@@ -9,7 +9,7 @@ Python's `http.server` is static-only — **accounts need the Node server**.
 Prerequisites: Node 22+ (`node --version`).
 
 ```powershell
-npm install          # zero production deps; only the dev test runner is used
+npm install          # includes nodemailer (the only production dependency)
 npm start            # → http://localhost:8080
 ```
 
@@ -84,20 +84,82 @@ Sessions idle out after **7 days** without activity, even before their 30-day
 absolute expiry. Changing the password or completing a reset also signs out
 every other device.
 
-## 5. Mail setup (when you're ready for real email)
+## 5. Mail setup (real email without owning a domain)
 
-Default transport is **console** (logs the email as JSON on stderr). To send
-real verification/reset mail:
+`server/mail.js` implements real SMTP via nodemailer — the route layer calls
+one interface (`sendMail({ to, subject, text })`) and nothing else changes.
+You configure everything through environment variables; the code never hardcodes
+a domain, so nothing here breaks when you switch domains later.
 
-1. Pick a provider (Resend, SES, Postmark, …) and credentials.
-2. Implement the `smtpAvailable()` branch in `server/mail.js` — the route
-   layer already calls one interface (`sendMail({ to, subject, text })`) and
-   would not change. Tracked as follow-up work in the execution plan.
-3. Set `MAIL_FROM=you@yourdomain` and `MAIL_TRANSPORT=smtp` (and provider
-   vars) in the server environment.
+### 5a. Test locally with no account and no domain (use this first)
 
-Until then: registration, reset, and resend all answer success immediately;
-the link only exists in the server log. Verify by reading the log line:
+Run a fake SMTP catcher on your machine, point the server at it, and every
+verification/reset email lands in a local web UI. Full end-to-end testing, zero
+sign-ups. `maildev` is already a devDependency:
+
+```powershell
+npx maildev --smtp 1025 --web 1080
+# then in another terminal:
+$env:MAIL_TRANSPORT = "smtp"
+$env:SMTP_HOST = "127.0.0.1"
+$env:SMTP_PORT = "1025"
+$env:MAIL_FROM = "AniGlobe <no-reply@localhost>"
+npm start
+```
+
+Register an account, open http://localhost:1080, and the confirmation email is
+there — click the link and the badge flips to Verified. (Mailpit is the modern
+equivalent, a single binary; same env vars apply.)
+
+This is the loop the account tests exercise with an injected mailer; the local
+catcher makes the same flow real enough to click through in a browser.
+
+### 5b. Send to real inboxes for free, still without a domain
+
+Most free tiers ask for a domain you must verify with DNS records — but three
+don't:
+
+| Provider | Free tier | Domain needed? | Path |
+| --- | --- | --- | --- |
+| **SendGrid** | 100 emails/day free | No | Settings → Sender Authentication → **Single Sender Verification**: verify one email address (e.g. your Gmail) and send from it. |
+| **Brevo** | 300/day free | No | Senders & IP → **Senders & IP** → add a sender email and verify it. SMTP host `smtp-relay.brevo.com:587`. |
+| **Mailgun** | sandbox mode free | No | Sandbox sends only to *authorized recipients* you add (one account, up to 5 recipients) — ideal for testing real delivery to yourself; your sandbox domain is provided. |
+
+Provider SMTP settings to copy into the env vars below:
+
+```powershell
+$env:MAIL_TRANSPORT = "smtp"
+$env:SMTP_HOST = "smtp.sendgrid.net"   # or smtp-relay.brevo.com / smtp.mailgun.org
+$env:SMTP_PORT = "587"
+$env:SMTP_USER = "apikey"              # or your provider login
+$env:SMTP_PASS = "<API key / SMTP key>"
+$env:MAIL_FROM = "AniGlobe <you@example.com>"   # the verified sender address
+```
+
+Skip **Resend** and **Postmark** for now: their free tiers require DNS
+verification of a domain you own (SPF/DKIM). They're the ones producing the
+domain wall you're hitting — you don't need them to get verification working.
+
+### 5c. When you own a domain later — nothing to change in the app
+
+The sending host is not baked in anywhere:
+
+- Email links are built from the request's `Host` header at send time
+  (`originOf()` in `server/mail.js`), so they always point at whatever domain
+  you currently serve the site from — `yourapp.vercel.app` today,
+  `yourdomain.com` tomorrow, no code change.
+- `MAIL_FROM` is a single environment variable. Buying a domain means
+  verifying it with your provider (SPF/DKIM DNS records) and setting
+  `MAIL_FROM="AniGlobe <no-reply@yourdomain>"` — that is the entire migration.
+- Tokens, users, sessions, and all stored data are domain-independent.
+
+So: start on the Vercel domain with a single-sender email (SendGrid/Brevo),
+and upgrade the sender to your domain in one env var when you buy one.
+Existing users and links are unaffected either way.
+
+Default transport is **console** (logs the email as JSON on stderr) — works
+for the §2 first-account flow without any provider at all. Until you configure
+a provider, verify by reading the log line:
 
 ```
 [aniglobe-mail] {"from":"AniGlobe <no-reply@localhost>","to":"you@example.com","subject":"Confirm your email…"}
@@ -112,8 +174,11 @@ the link only exists in the server log. Verify by reading the log line:
 | `DATABASE_URL` | `<root>/data/aniglobe.db` | SQLite file; `:memory:` for tests. |
 | `NODE_ENV` | unset | `production` → Secure cookies + HSTS. |
 | `ENFORCE_CSP` | unset (enforced) | `0` → Content-Security-Policy-Report-Only instead. |
-| `MAIL_TRANSPORT` | `console` | `smtp` reserved for the future SMTP wiring. |
-| `MAIL_FROM` | `AniGlobe <no-reply@localhost>` | Envelope sender on mail. |
+| `MAIL_TRANSPORT` | `console` | `smtp` → send real mail via nodemailer. |
+| `SMTP_HOST` | — | SMTP server (provider or `127.0.0.1` for a local catcher). |
+| `SMTP_PORT` | `587` | `465` selects TLS automatically. |
+| `SMTP_USER` / `SMTP_PASS` | — | Provider credentials. |
+| `MAIL_FROM` | `AniGlobe <no-reply@localhost>` | Sender identity on mail; the only domain-bound setting. |
 
 ## 7. Back up and restore
 
@@ -152,6 +217,7 @@ gitignored); accounts, prefs, templates, and guess rows reset to zero.
 | `429` on login/register | Rate limiter tripped (persisted now) | Wait the window (15 min), then retry |
 | Port already in use | Another server instance | `Get-NetTCPConnection -LocalPort 8080` → `Stop-Process` |
 | Reset email never arrives | Console transport in dev | Read the `[aniglobe-mail]` line in the server log |
+| Verification email goes to spam | Free-tier single-sender delivery | Test with §5a local catcher; add your own inbox as an authorized recipient on Mailgun sandbox |
 | `404` on `/data/...` or `/server/...` | Working as intended | The database and server tree are never served |
 
 ## 10. Security posture
@@ -168,9 +234,9 @@ gitignored); accounts, prefs, templates, and guess rows reset to zero.
 | Templates/prefs sync | body caps (64 KB prefs, 128 KB templates), per-user rows only |
 
 Known limits (tracked in `artifacts/output/05-planning/execution-plan.md`):
-SMTP transport is a stub, email verification/reset links require a mail
-provider to be real, rate limits are per-instance (fine for one process),
-and there is no 2FA / OAuth yet (Track B).
+delivery needs one of the §5 providers configured (the console transport only
+logs), rate limits are per-instance (fine for one process), and there is no
+2FA / OAuth yet (Track B).
 
 ## 11. Tests
 
