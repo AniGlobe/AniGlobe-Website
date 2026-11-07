@@ -8,9 +8,12 @@
 
 import { site, tools, resolveToolId, defaultToolId } from './config.js';
 import { el, render } from './lib.js';
+import { getSession, logout, onSessionChange, refreshSession } from './auth.js';
+import { createAuthDialog } from './tools/auth-dialog.js';
 
 const dom = {
   topbarBrand: document.querySelector('.topbar-brand'),
+  topbarActions: document.querySelector('.topbar-actions'),
   sidebar: document.getElementById('site-sidebar'),
   sidebarBackdrop: document.getElementById('sidebar-backdrop'),
   sidebarToggle: document.getElementById('sidebar-toggle'),
@@ -18,6 +21,34 @@ const dom = {
   app: document.getElementById('app'),
   footer: document.getElementById('footer'),
 };
+
+let authDialog = null;
+
+function getAuthDialog() {
+  if (!authDialog) authDialog = createAuthDialog();
+  return authDialog;
+}
+
+function renderTopbarAuth() {
+  const session = getSession();
+  const actions = [];
+  if (session) {
+    const accountLink = el('a', { class: 'btn btn-outline btn-sm', href: '#/account' }, session.user.username);
+    const logoutButton = el('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, 'Log out');
+    logoutButton.addEventListener('click', async () => {
+      await logout();
+      if (resolveToolId(window.location.hash) === 'account') window.location.hash = '#/' + defaultToolId;
+    });
+    actions.push(accountLink, logoutButton);
+  } else {
+    const loginButton = el('button', { class: 'btn btn-outline btn-sm', type: 'button' }, 'Log in');
+    const registerButton = el('button', { class: 'btn btn-primary btn-sm', type: 'button' }, 'Create account');
+    loginButton.addEventListener('click', (event) => getAuthDialog().open('login', event.currentTarget));
+    registerButton.addEventListener('click', (event) => getAuthDialog().open('register', event.currentTarget));
+    actions.push(loginButton, registerButton);
+  }
+  render(dom.topbarActions, ...actions);
+}
 
 let cleanupCurrent = null;
 let mountToken = 0;
@@ -32,13 +63,15 @@ function renderBrand() {
 
 function renderNav() {
   const links = () =>
-    tools.map((tool) =>
-      el(
-        'a',
-        { class: 'nav-link', href: '#/' + tool.id, dataset: { tool: tool.id } },
-        el('span', {}, tool.label)
-      )
-    );
+    tools
+      .filter((tool) => !tool.hidden)
+      .map((tool) =>
+        el(
+          'a',
+          { class: 'nav-link', href: '#/' + tool.id, dataset: { tool: tool.id } },
+          el('span', {}, tool.label)
+        )
+      );
 
   render(dom.nav, links());
 }
@@ -214,6 +247,9 @@ function start() {
   renderBrand();
   renderNav();
   renderFooter();
+  renderTopbarAuth();
+  onSessionChange(renderTopbarAuth);
+  refreshSession();
 
   // Sidebar toggle
   dom.sidebarToggle.addEventListener('click', toggleSidebar);

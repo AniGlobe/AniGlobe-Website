@@ -7,6 +7,7 @@
 
 import { el, render, store, copyText, dateKey, dayIndex, hashString, setStatus } from '../lib.js';
 import { fetchDailyPuzzle } from '../providers/mal.js';
+import { getSession, pushGuessProgress } from '../auth.js';
 import { site } from '../config.js';
 import { resolveMediaType } from '../domain/media.js';
 
@@ -415,6 +416,9 @@ export default {
       }
 
       const saved = saveProgress();
+      if (getSession()) {
+        pushGuessProgress({ mediaType: media.id, dayIndex: index, score: won ? currentScore() : 0, won });
+      }
       renderGame();
       if (!saved) {
         setStatus(status, 'This browser could not save your result or streak.', 'warn');

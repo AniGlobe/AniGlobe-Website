@@ -14,3 +14,12 @@ Thumbs.db
 *.txt
 tmp-probe.txt
 tmp-probe2.txt
+
+# runtime account database (regenerated on boot, never committed)
+data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.db-wal2
+*.db-wal3

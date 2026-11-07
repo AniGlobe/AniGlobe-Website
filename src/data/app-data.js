@@ -16,7 +16,7 @@ export const APP_DATA = {
       label: 'AniManga Wrapped',
       description: 'Turn a public MAL or AniList profile into a shareable wrap card.',
       mediaTypes: ['anime', 'manga'],
-      palettes: ['atlas', 'coast', 'night'],
+      palettes: ['atlas', 'coast', 'sakura', 'ukiyo', 'night'],
       sections: ['overview', 'activity', 'favorites', 'scores', 'tags'],
       icon: 'card', // placeholder for globe/stamp motif
     },
@@ -133,9 +133,12 @@ export const APP_DATA = {
 
   // Palette definitions (for Wrapped preview)
   palettes: {
-    atlas: { name: 'Atlas', bg: '#eef7f6', accent: '#1b6c80', text: '#131416' },
-    coast: { name: 'Coast', bg: '#e8f1f8', accent: '#1b6c80', text: '#131416' },
-    night: { name: 'Night', bg: '#17303a', accent: '#1b6c80', text: '#ffffff' },
+    atlas: { name: 'Atlas', bg: '#f4f8fd', accent: '#3b82f6', text: '#101826' },
+    coast: { name: 'Coast', bg: '#e9f0fa', accent: '#2563eb', text: '#0c1b2d' },
+    sakura: { name: 'Sakura', bg: '#fdf0ea', accent: '#c2255c', text: '#342025' },
+    ukiyo: { name: 'Ukiyo', bg: '#121a2e', accent: '#93a5ff', text: '#eceff9' },
+    ember: { name: 'Ember', bg: '#181009', accent: '#ff9d4d', text: '#f6ead9' },
+    night: { name: 'Night', bg: '#10151d', accent: '#5b9dff', text: '#eef3fa' },
   },
 
   // Media type definitions

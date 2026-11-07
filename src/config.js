@@ -17,6 +17,7 @@ export const tools = [
   { id: 'card', label: 'AniManga Wrapped', load: () => import('./tools/card.js') },
   { id: 'daily', label: 'Anime Guess', mediaType: 'anime', load: () => import('./tools/daily.js') },
   { id: 'manga-daily', label: 'Manga Guess', mediaType: 'manga', load: () => import('./tools/daily.js') },
+  { id: 'account', label: 'Account', hidden: true, load: () => import('./tools/account.js') },
 ];
 
 export const defaultToolId = 'card';
