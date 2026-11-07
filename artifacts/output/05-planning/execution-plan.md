@@ -1,7 +1,7 @@
 # Execution Plan — Account System Hardening + Expansion
 
 **Planned:** 2026-11-07
-**Estimated total:** Track A (harden) ~16h · Track B (expand) ~28h
+**Estimated total:** Track A (harden) ~16h — **DONE** · Track B (expand) ~28h — queued
 **Developers needed:** 1–2
 **Parallelizable tasks:** Track A: 6 of 9 · Track B: 4 of 8
 **Scope lock:** `[SCOPE_LOCKED: track-a-harden-then-b]` (recorded in conversation; the Vespyr `step_tracker.js` harness is not installed in this repo)
@@ -17,20 +17,21 @@
 | Area | Status | Evidence |
 |---|---|---|
 | Register / login / logout | ✅ shipped | `tests/auth.test.mjs` (9 auth tests), live browser flow |
-| Sessions (httpOnly, hashed at rest, 30-day) | ✅ shipped | e2e sign-in/out in browser |
+| Sessions (httpOnly, hashed at rest, 30-day) | ✅ shipped | idle timeout + active-session list, e2e |
 | Passwords (scrypt, timing-safe) | ✅ shipped | unit + integration tests |
 | CSRF double-submit on mutations | ✅ shipped | 403 test |
-| Rate limiting (in-memory) | ⚠️ shipped, weak | resets on restart |
+| Rate limiting | ✅ shipped (SQLite-backed) | restarts no longer reset counters |
 | Wrapped prefs + templates sync | ✅ shipped | round-trip test + browser |
 | Guess progress sync | ✅ shipped | API test + browser finish-round |
 | Change password / delete account | ✅ shipped | tests + account page live |
-| Email verification | ❌ missing | nothing in `server/` |
-| Password reset | ❌ missing | nothing in `server/` |
-| Session management UX | ❌ missing | no active-session list |
-| Security logging / health endpoint | ❌ missing | no structured events |
-| Security headers (CSP) | ⚠️ partial | nosniff/referrer/HSTS only |
-| Backup/restore procedure | ❌ missing | `data/` gitignored only |
-| Public profiles / avatar / data export | ❌ missing | Track B |
+| Email verification | ✅ shipped | verify-token flow + badge/resend, console mailer |
+| Password reset | ✅ shipped | oracle-proof request, single-use tokens, sessions killed |
+| Session management UX | ✅ shipped | devices list, revoke, revoke-all on account page |
+| Security logging / health endpoint | ✅ shipped | `[aniglobe-security]` JSON events, `/api/health` |
+| Security headers (CSP) | ✅ shipped | enforced CSP, `/.well-known/security.txt` |
+| Backup/restore procedure | ✅ documented | RUNBOOK §5, drill notes |
+| Account data export | ✅ shipped | `GET /api/auth/export` + account-page button |
+| Public profiles / avatar / OAuth | ❌ Track B | needs `product-spec.md` via shape-up |
 
 ---
 
