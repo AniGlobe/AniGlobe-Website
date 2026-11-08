@@ -20,25 +20,29 @@ export function createAuthDialog() {
     'div',
     { class: 'field auth-field' },
     el('label', { for: 'auth-username' }, 'Username'),
-    el('input', { type: 'text', id: 'auth-username', name: 'username', autocomplete: 'username', maxlength: '32' })
+    el('input', { type: 'text', id: 'auth-username', name: 'username', autocomplete: 'username', maxlength: '32' }),
+    el('p', { class: 'field-error', id: 'auth-username-error', hidden: true })
   );
   const emailField = el(
     'div',
     { class: 'field auth-field', hidden: true },
     el('label', { for: 'auth-email' }, 'Email'),
-    el('input', { type: 'email', id: 'auth-email', name: 'email', autocomplete: 'email', maxlength: '254' })
+    el('input', { type: 'email', id: 'auth-email', name: 'email', autocomplete: 'email', maxlength: '254' }),
+    el('p', { class: 'field-error', id: 'auth-email-error', hidden: true })
   );
   const identifierField = el(
     'div',
     { class: 'field auth-field' },
     el('label', { for: 'auth-identifier' }, 'Username or email'),
-    el('input', { type: 'text', id: 'auth-identifier', name: 'identifier', autocomplete: 'username' })
+    el('input', { type: 'text', id: 'auth-identifier', name: 'identifier', autocomplete: 'username' }),
+    el('p', { class: 'field-error', id: 'auth-identifier-error', hidden: true })
   );
   const passwordField = el(
     'div',
     { class: 'field auth-field' },
     el('label', { for: 'auth-password' }, 'Password'),
-    el('input', { type: 'password', id: 'auth-password', name: 'password', autocomplete: 'current-password', maxlength: '128' })
+    el('input', { type: 'password', id: 'auth-password', name: 'password', autocomplete: 'current-password', maxlength: '128' }),
+    el('p', { class: 'field-error', id: 'auth-password-error', hidden: true })
   );
   const status = el('div', { class: 'status', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' });
   const submit = el('button', { class: 'btn btn-primary auth-submit', type: 'submit' }, 'Log in');
@@ -60,7 +64,29 @@ export function createAuthDialog() {
     el('p', { class: 'auth-dialog-foot' }, modeToggle)
   );
 
+  let justRegisteredEmail = null;
+
+  function clearFieldErrors() {
+    for (const input of dialog.querySelectorAll('input')) input.removeAttribute('aria-invalid');
+    for (const el of dialog.querySelectorAll('.field-error')) {
+      el.textContent = '';
+      el.hidden = true;
+    }
+  }
+
+  function showFieldError(name, message) {
+    const input = document.getElementById('auth-' + name);
+    const errorEl = document.getElementById('auth-' + name + '-error');
+    if (input) input.setAttribute('aria-invalid', 'true');
+    if (errorEl) {
+      errorEl.textContent = String(message);
+      errorEl.hidden = false;
+    }
+    if (input && errorEl) input.setAttribute('aria-describedby', errorEl.id);
+  }
+
   function paint() {
+    justRegisteredEmail = null;
     const isLogin = mode === 'login';
     title.textContent = isLogin ? 'Log in' : 'Create your account';
     subtitle.textContent = isLogin
@@ -72,6 +98,7 @@ export function createAuthDialog() {
     passwordField.querySelector('input').setAttribute('autocomplete', isLogin ? 'current-password' : 'new-password');
     submit.textContent = isLogin ? 'Log in' : 'Create account';
     modeToggle.textContent = isLogin ? 'New here? Create an account' : 'Already have an account? Log in';
+    modeToggle.hidden = false;
     form.replaceChildren(
       isLogin ? identifierField : usernameField,
       isLogin ? null : emailField,
@@ -80,44 +107,50 @@ export function createAuthDialog() {
       submit
     );
     setStatus(status, '', 'info');
-    for (const input of dialog.querySelectorAll('input')) input.removeAttribute('aria-invalid');
+    clearFieldErrors();
   }
 
   function fieldErrors(details) {
     if (!details) return;
     const fields = details.fields || {};
-    const mapping = {
-      username: document.getElementById('auth-username'),
-      email: document.getElementById('auth-email'),
-      identifier: document.getElementById('auth-identifier'),
-      password: document.getElementById('auth-password'),
-    };
     for (const [name, message] of Object.entries(fields)) {
-      const input = mapping[name];
-      if (input) input.setAttribute('aria-invalid', 'true');
+      showFieldError(name, message);
     }
-    if (details.field && mapping[details.field]) {
-      mapping[details.field].setAttribute('aria-invalid', 'true');
+    if (details.field) {
+      showFieldError(details.field, details.message || 'Check this field.');
     }
   }
 
   async function submitForm(event) {
     event.preventDefault();
+    if (justRegisteredEmail) {
+      const email = justRegisteredEmail;
+      justRegisteredEmail = null;
+      closeDialog();
+      window.location.hash = '#/account';
+      return;
+    }
     submit.disabled = true;
     try {
       if (mode === 'login') {
         const identifier = document.getElementById('auth-identifier').value.trim();
         const password = document.getElementById('auth-password').value;
         await login({ identifier, password });
+        closeDialog();
       } else {
         const username = document.getElementById('auth-username').value.trim();
         const email = document.getElementById('auth-email').value.trim();
         const password = document.getElementById('auth-password').value;
         await register({ username, email, password });
-        setStatus(status, 'Account created. We sent a confirmation link to ' + email + ' — confirm your email to unlock the account page.', 'success');
-        await new Promise((resolve) => setTimeout(resolve, 1600));
+        justRegisteredEmail = email;
+        clearFieldErrors();
+        title.textContent = 'Check your inbox';
+        subtitle.textContent = 'We sent a confirmation link to ' + email + '. Open your account page when you are ready — the badge flips to Verified after you click it.';
+        setStatus(status, 'Account created.', 'success');
+        submit.textContent = 'Open account page';
+        modeToggle.hidden = true;
+        submit.focus();
       }
-      closeDialog();
     } catch (error) {
       const message = error instanceof AuthError ? error.message : 'Could not reach the account server. Check your connection and try again.';
       setStatus(status, message, 'error');

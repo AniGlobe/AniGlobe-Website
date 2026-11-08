@@ -69,14 +69,16 @@ export function renderProfile(root) {
           avatar,
           el('p', { class: 'account-profile-name' }, '@' + profile.username, ' ', badge)
         ),
-        profile.bio ? el('p', { class: 'account-profile-bio' }, profile.bio) : null,
+        profile.bio ? el('p', { class: 'account-profile-bio' }, profile.bio) : el('p', { class: 'account-danger-note' }, 'No bio yet.'),
         el('p', { class: 'account-danger-note' }, 'Member since ' + new Date(profile.createdAt).toLocaleDateString()),
         el(
           'div',
           { class: 'kpis account-history-kpis' },
           el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Played'), el('strong', { class: 'kpi-value num' }, String(profile.stats.gamesPlayed))),
           el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Wins'), el('strong', { class: 'kpi-value num' }, String(profile.stats.wins))),
-          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Win rate'), el('strong', { class: 'kpi-value num' }, String(profile.stats.winRate) + '%'))
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Win rate'), el('strong', { class: 'kpi-value num' }, String(profile.stats.winRate) + '%')),
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Streak'), el('strong', { class: 'kpi-value num' }, String(profile.stats.currentStreak != null ? profile.stats.currentStreak : 0))),
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Best'), el('strong', { class: 'kpi-value num' }, String(profile.stats.bestStreak != null ? profile.stats.bestStreak : 0)))
         )
       );
     })

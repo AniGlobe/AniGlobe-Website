@@ -1911,7 +1911,11 @@ html.wrapped-dialog-open { overflow: hidden; }
 .btn-primary:focus-visible { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35); outline-offset: 2px; }
 .library-meta a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
+/* Field-level errors (auth dialog polish) */
+.field-error { color: var(--pill-negative-ink); font-size: var(--fs-small); line-height: 1.5; margin: 0; }
+
 /* Public template library */
+.library-filters { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
 .library-list { display: grid; gap: var(--s2); list-style: none; margin-top: var(--s3); padding: 0; }
 .library-row {
   display: grid;

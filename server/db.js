@@ -362,11 +362,16 @@ export function listPublicTemplates(db, { limit = 50 } = {}) {
     } catch {
       payload = {};
     }
+    const sectionCount = Array.isArray(payload.order)
+      ? payload.order.filter((id) => typeof id === 'string').length
+      : 0;
     return {
       id: row.id,
       name: row.name,
       author: row.author,
       theme: typeof payload.theme === 'string' ? payload.theme : null,
+      layout: payload.layout === 'story' ? 'story' : 'square',
+      sections: sectionCount,
       updatedAt: row.updated_at,
     };
   });

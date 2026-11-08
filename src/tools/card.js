@@ -358,7 +358,7 @@ export default {
     const templateName = el('input', {
       type: 'text',
       id: 'wrapped-template-name',
-      maxlength: '32',
+      maxlength: '64',
       placeholder: 'Template name',
       'aria-label': 'Template name',
     });
@@ -915,7 +915,7 @@ export default {
       setStatus(status, error && error.message ? error.message : 'That share link looks damaged.', 'error');
     }
     if (sharedTemplate) {
-      templateName.value = sharedTemplate.name.slice(0, 32);
+      templateName.value = sharedTemplate.name.slice(0, 64);
       applyTemplate(sharedTemplate);
       setStatus(status, 'Shared template "' + sharedTemplate.name + '" applied. Open the studio to review, then Save to keep it.', 'info');
     }

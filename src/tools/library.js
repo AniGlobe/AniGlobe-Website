@@ -21,8 +21,9 @@ export default {
       'aria-label': 'Search templates',
     });
     const list = el('ul', { class: 'library-list' });
+    const themeFilter = el('div', { class: 'library-filters', role: 'group', 'aria-label': 'Filter by theme' });
     const empty = el('p', { class: 'account-danger-note' }, 'No public templates yet. Publish one from the card studio to appear here.');
-    const noResults = el('p', { class: 'account-danger-note' }, 'No templates match your search.');
+    const noResults = el('p', { class: 'account-danger-note' }, 'No templates match your filters.');
 
     render(
       root,
@@ -36,6 +37,7 @@ export default {
         'section',
         { class: 'panel account-panel' },
         el('div', { class: 'field' }, el('label', { for: 'library-search' }, 'Search'), search),
+        themeFilter,
         status,
         list,
         empty,
@@ -56,17 +58,38 @@ export default {
       paint();
     }
 
+    let activeTheme = '';
+    function paintFilters() {
+      // No hard-coded theme list: chips are derived from the templates
+      // actually present, plus an "All themes" reset.
+      const themes = [...new Set(all.map((t) => t.theme).filter(Boolean))].sort();
+      render(
+        themeFilter,
+        el('button', { class: 'btn btn-sm ' + (!activeTheme ? 'btn-primary' : 'btn-quiet'), type: 'button', 'aria-pressed': String(!activeTheme), dataset: { theme: '' } }, 'All themes'),
+        ...themes.map((theme) =>
+          el('button', { class: 'btn btn-sm ' + (activeTheme === theme ? 'btn-primary' : 'btn-quiet'), type: 'button', 'aria-pressed': String(activeTheme === theme), dataset: { theme } }, theme)
+        )
+      );
+    }
+
     function paint() {
+      paintFilters();
       const query = search.value.trim().toLowerCase();
-      const filtered = query
-        ? all.filter((t) => t.name.toLowerCase().includes(query) || t.author.toLowerCase().includes(query))
-        : all;
-      empty.hidden = !(all.length === 0 && !query);
-      noResults.hidden = !(query && filtered.length === 0 && all.length > 0);
+      const filtered = all.filter((t) =>
+        (!activeTheme || t.theme === activeTheme) &&
+        (!query || t.name.toLowerCase().includes(query) || t.author.toLowerCase().includes(query))
+      );
+      empty.hidden = !(all.length === 0 && !query && !activeTheme);
+      noResults.hidden = !((query || activeTheme) && filtered.length === 0 && all.length > 0);
       render(
         list,
-        ...filtered.map((template) =>
-          el(
+        ...filtered.map((template) => {
+          const metaParts = [];
+          if (template.theme) metaParts.push(template.theme);
+          if (template.layout) metaParts.push(template.layout + ' card');
+          if (template.sections != null) metaParts.push(template.sections + ' sections');
+          metaParts.push(new Date(template.updatedAt).toLocaleDateString());
+          return el(
             'li',
             { class: 'library-row' },
             el(
@@ -77,14 +100,21 @@ export default {
                 'p',
                 { class: 'library-meta' },
                 el('a', { href: '#/profile?u=' + encodeURIComponent(template.author) }, '@' + template.author),
-                (template.theme ? ' · ' + template.theme : '') + ' · ' + new Date(template.updatedAt).toLocaleDateString()
+                metaParts.length ? ' · ' + metaParts.join(' · ') : ''
               )
             ),
             el('button', { class: 'btn btn-outline btn-sm library-use', type: 'button', dataset: { use: String(template.id) } }, 'Use template')
-          )
-        )
+          );
+        })
       );
     }
+
+    themeFilter.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-theme]');
+      if (!button) return;
+      activeTheme = button.dataset.theme || '';
+      paint();
+    });
 
     search.addEventListener('input', paint);
 

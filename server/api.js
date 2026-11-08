@@ -28,6 +28,7 @@ import {
 } from './http.js';
 import { hashPassword, verifyPassword, dummyVerify } from './passwords.js';
 import { resetPasswordMail, verifyEmailMail, sendMail, originOf } from './mail.js';
+import { currentStreak, bestStreak } from '../src/domain/streak.js';
 import {
   createResetToken,
   createSession,
@@ -375,6 +376,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
         id: row.id,
         createdAt: row.created_at,
         lastSeenAt: row.last_seen_at,
+        expiresAt: row.expires_at,
         ip: row.ip,
         userAgent: row.user_agent,
         current: row.id === session.id,
@@ -463,6 +465,10 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   function publicProfile(user) {
     const summary = guessSummary(db, user.id);
     const total = summary.total;
+    const progress = listGuessProgress(db, user.id);
+    const nowDate = new Date();
+    const localMidnight = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
+    const todayIndex = Math.floor(localMidnight.getTime() / 86400000);
     return {
       username: user.username,
       createdAt: user.created_at,
@@ -473,6 +479,8 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
         gamesPlayed: total,
         wins: summary.wins,
         winRate: total ? Math.round((summary.wins / total) * 100) : 0,
+        currentStreak: currentStreak(progress, { todayIndex }),
+        bestStreak: bestStreak(progress),
       },
     };
   }

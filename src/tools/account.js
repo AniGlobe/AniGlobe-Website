@@ -119,8 +119,10 @@ export default {
         }
         render(
           sessionList,
-          ...rows.map((entry) =>
-            el(
+          ...rows.map((entry) => {
+            const lastSeen = new Date(entry.lastSeenAt || entry.createdAt).toLocaleString();
+            const expires = entry.expiresAt ? ' · expires ' + new Date(entry.expiresAt).toLocaleDateString() : '';
+            return el(
               'li',
               { class: 'account-session' },
               el(
@@ -128,12 +130,12 @@ export default {
                 { class: 'account-session-label' },
                 describeDevice(entry.userAgent) + (entry.current ? ' (this device)' : '') + ' · ' + entry.ip
               ),
-              el('span', { class: 'account-session-last' }, 'last seen ' + new Date(entry.lastSeenAt || entry.createdAt).toLocaleString()),
+              el('span', { class: 'account-session-last' }, 'last seen ' + lastSeen + expires),
               entry.current
                 ? null
                 : el('button', { class: 'btn btn-quiet btn-sm', type: 'button', dataset: { revoke: String(entry.id) } }, 'Revoke')
-            )
-          )
+            );
+          })
         );
       }
 
