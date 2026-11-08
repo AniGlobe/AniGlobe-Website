@@ -1,9 +1,10 @@
 /**
- * Persisted rate limiter backed by SQLite (server/db.js -> rate_limits).
+ * Persisted rate limiter backed by SQLite (api/server/db.js -> rate_limits).
  *
- * Backs the in-memory limiter from the original build: counters now survive
- * restarts and are consistent for every request the single process serves.
- * The consume() interface is unchanged so routes keep working as before.
+ * Counters survive restarts and are consistent for every request the process
+ * serves (or every serverless instance, since the counters live in the
+ * database, not in memory). The consume() interface is unchanged so routes
+ * keep working as before.
  */
 
 import { consumeRateLimit, pruneRateLimits } from './db.js';
@@ -13,11 +14,11 @@ export function createDbRateLimiter({ db, windowMs = 15 * 60 * 1000, max = 10, p
   const now = () => Date.now();
 
   return {
-    consume(key) {
+    async consume(key) {
       const current = now();
       if (pruneOnUse && current - lastPrune > 60 * 1000) {
         lastPrune = current;
-        pruneRateLimits(db, current);
+        await pruneRateLimits(db, current);
       }
       return consumeRateLimit(db, key, windowMs, max, current);
     },

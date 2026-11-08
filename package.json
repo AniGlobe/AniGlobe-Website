@@ -5,13 +5,14 @@
   "description": "AniGlobe account backend and static site server",
   "type": "module",
   "scripts": {
-    "start": "node server/index.js",
+    "start": "node dev.js",
     "test": "node --test tests/*.test.mjs"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "nodemailer": "^10.4.0"
   },
   "devDependencies": {

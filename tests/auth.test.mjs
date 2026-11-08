@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { openDatabase } from '../server/db.js';
-import { createApiRouter } from '../server/api.js';
-import { sha256Hex } from '../server/http.js';
-import { hashPassword, verifyPassword } from '../server/passwords.js';
+import { openDatabase } from '../api/server/db.js';
+import { createApiRouter } from '../api/server/api.js';
+import { sha256Hex } from '../api/server/http.js';
+import { hashPassword, verifyPassword } from '../api/server/passwords.js';
 
 /**
  * Start one ephemeral server per file with an in-memory database and return
@@ -12,7 +12,7 @@ import { hashPassword, verifyPassword } from '../server/passwords.js';
  * value, which is exactly the surface a malicious client would fuzz.
  */
 async function startTestServer({ mail = null } = {}) {
-  const db = openDatabase(':memory:');
+  const db = await openDatabase(':memory:');
   const outbox = [];
   const api = createApiRouter({
     db,
@@ -564,7 +564,8 @@ test('deleting the account ends the session and removes the user', async () => {
 
     const relogin = await client.post('/api/auth/login', { identifier: 'Doomed', password: GOOD_PASSWORD });
     assert.equal(relogin.status, 401);
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, 0);
+    const countRow = (await db.execute('SELECT COUNT(*) AS n FROM users')).rows[0];
+    assert.equal(countRow.n, 0);
   } finally {
     await close();
   }

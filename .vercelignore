@@ -1,0 +1,13 @@
+# Vercel deployment ignores — keep anything non-public out of the upload.
+# (package.json / package-lock.json are NOT ignored: Vercel needs them to
+# install dependencies for functions.)
+tests
+artifacts
+data
+.git
+.vercel
+.env
+.env.*
+*.md
+.DS_Store
+node_modules

@@ -28,7 +28,7 @@ import {
 } from './http.js';
 import { hashPassword, verifyPassword, dummyVerify } from './passwords.js';
 import { resetPasswordMail, verifyEmailMail, sendMail, originOf } from './mail.js';
-import { currentStreak, bestStreak } from '../src/domain/streak.js';
+import { currentStreak, bestStreak } from '../../src/domain/streak.js';
 import {
   createResetToken,
   createSession,
@@ -97,46 +97,46 @@ function toUserSafe(row) {
   return publicUser(safe);
 }
 
-function resolveSession(db, req) {
+async function resolveSession(db, req) {
   const token = getSessionToken(req);
   if (!token) return null;
   const tokenHash = sha256Hex(token);
-  const session = getSessionByTokenHash(db, tokenHash);
+  const session = await getSessionByTokenHash(db, tokenHash);
   if (!session) return null;
   if (isSessionIdle(db, session, SESSION_IDLE_MS)) {
-    deleteSessionByTokenHash(db, tokenHash);
+    await deleteSessionByTokenHash(db, tokenHash);
     return null;
   }
-  const user = getUserById(db, session.user_id);
+  const user = await getUserById(db, session.user_id);
   if (!user) return null;
   // Slide the idle window per session, at most once every five minutes.
   // (A single process-global timer would starve every other user's touch.)
   const current = Date.now();
   const lastSeen = Date.parse(session.last_seen_at || session.created_at || '');
   if (Number.isNaN(lastSeen) || current - lastSeen > 5 * 60 * 1000) {
-    touchSession(db, session.id, new Date(current).toISOString());
+    await touchSession(db, session.id, new Date(current).toISOString());
   }
   return { user, session, token };
 }
 
-function requireSession(db, req) {
-  const resolved = resolveSession(db, req);
+async function requireSession(db, req) {
+  const resolved = await resolveSession(db, req);
   if (!resolved) throw new HttpError(401, 'You need to log in first.');
   return resolved;
 }
 
-function issueSession(db, req, res, user) {
+async function issueSession(db, req, res, user) {
   const token = randomToken(32);
-  pruneExpiredSessions(db);
+  await pruneExpiredSessions(db);
   const expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS).toISOString();
-  createSession(db, {
+  await createSession(db, {
     userId: user.id,
     tokenHash: sha256Hex(token),
     expiresAt,
     userAgent: req.headers['user-agent'] || null,
     ip: clientIp(req),
   });
-  touchLogin(db, user.id);
+  await touchLogin(db, user.id);
   const csrf = csrfToken();
   const secure = process.env.NODE_ENV === 'production';
   res.setHeader('Set-Cookie', [
@@ -146,9 +146,9 @@ function issueSession(db, req, res, user) {
   return csrf;
 }
 
-function destroySession(db, req, res) {
+async function destroySession(db, req, res) {
   const token = getSessionToken(req);
-  if (token) deleteSessionByTokenHash(db, sha256Hex(token));
+  if (token) await deleteSessionByTokenHash(db, sha256Hex(token));
   const secure = process.env.NODE_ENV === 'production';
   res.setHeader('Set-Cookie', [clearSessionCookie({ secure }), clearCsrfCookie({ secure })]);
 }
@@ -164,15 +164,15 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     return mailer(verifyEmailMail(user.email, url));
   }
 
-  function issueVerifyToken(req, user) {
+  async function issueVerifyToken(req, user) {
     const token = randomToken(32);
     const expiresAt = new Date(Date.now() + VERIFY_TOKEN_LIFETIME_MS).toISOString();
-    createVerifyToken(db, user.id, sha256Hex(token), expiresAt);
+    await createVerifyToken(db, user.id, sha256Hex(token), expiresAt);
     return token;
   }
 
   async function register(req, res) {
-    const gate = registerLimiter.consume(clientIp(req));
+    const gate = await registerLimiter.consume(clientIp(req));
     if (!gate.allowed) throw new HttpError(429, 'Too many attempts. Try again in a few minutes.');
 
     const body = await readJsonBody(req);
@@ -187,22 +187,22 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       throw new HttpError(400, 'Check the highlighted fields.', { fields });
     }
 
-    if (getUserByUsername(db, username.value)) {
+    if (await getUserByUsername(db, username.value)) {
       throw new HttpError(409, 'That username is already taken.', { field: 'username' });
     }
-    if (getUserByEmail(db, email.value)) {
+    if (await getUserByEmail(db, email.value)) {
       throw new HttpError(409, 'An account with that email already exists.', { field: 'email' });
     }
 
-    const user = createUser(db, {
+    const user = await createUser(db, {
       username: username.value,
       email: email.value,
       passwordHash: hashPassword(password.value),
     });
-    const token = issueVerifyToken(req, user);
+    const token = await issueVerifyToken(req, user);
     mailVerifyToken(req, user, token).catch((error) => logEvent('verify_mail_failed', { userId: user.id, error: error.message }));
     logEvent('register', { userId: user.id, ip: clientIp(req) });
-    issueSession(db, req, res, user);
+    await issueSession(db, req, res, user);
     json(res, 201, { user: publicUser(user) });
   }
 
@@ -214,12 +214,12 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       throw new HttpError(400, 'Enter your username or email and password.');
     }
 
-    const gate = loginLimiter.consume(clientIp(req) + ':' + identifier.toLowerCase());
+    const gate = await loginLimiter.consume(clientIp(req) + ':' + identifier.toLowerCase());
     if (!gate.allowed) throw new HttpError(429, 'Too many attempts. Try again in a few minutes.');
 
     const user = identifier.includes('@')
-      ? getUserByEmail(db, identifier)
-      : getUserByUsername(db, identifier);
+      ? await getUserByEmail(db, identifier)
+      : await getUserByUsername(db, identifier);
 
     if (!user) {
       dummyVerify(password); // equalize timing
@@ -232,30 +232,30 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     }
 
     logEvent('login_success', { userId: user.id, ip: clientIp(req) });
-    issueSession(db, req, res, user);
+    await issueSession(db, req, res, user);
     json(res, 200, { user: publicUser(user) });
   }
 
   async function logout(req, res) {
     // Require CSRF when a session exists (logout-CSRF); anonymous logout stays idempotent.
     if (getSessionToken(req)) requireCsrf(req);
-    destroySession(db, req, res);
+    await destroySession(db, req, res);
     json(res, 200, { ok: true });
   }
 
   async function me(req, res) {
-    const resolved = resolveSession(db, req);
+    const resolved = await resolveSession(db, req);
     if (!resolved) {
       json(res, 200, { user: null });
       return;
     }
-    const activeSessions = countActiveSessions(db, resolved.user.id);
+    const activeSessions = await countActiveSessions(db, resolved.user.id);
     json(res, 200, { user: publicUser(resolved.user), activeSessions });
   }
 
   async function changePassword(req, res) {
     requireCsrf(req);
-    const { user } = requireSession(db, req);
+    const { user } = await requireSession(db, req);
     const body = await readJsonBody(req);
     const currentValue = body.currentPassword == null ? '' : String(body.currentPassword);
     if (currentValue === '') {
@@ -271,23 +271,23 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     if (verifyPassword(next.value, user.password_hash)) {
       throw new HttpError(400, 'Choose a password you have not used on this account.', { field: 'newPassword' });
     }
-    updateUserPassword(db, user.id, hashPassword(next.value));
-    deleteAllSessionsForUser(db, user.id); // every device signs out; this one re-issues below
+    await updateUserPassword(db, user.id, hashPassword(next.value));
+    await deleteAllSessionsForUser(db, user.id); // every device signs out; this one re-issues below
     logEvent('password_changed', { userId: user.id });
-    issueSession(db, req, res, user);
+    await issueSession(db, req, res, user);
     json(res, 200, { ok: true });
   }
 
   async function deleteAccount(req, res) {
     requireCsrf(req);
-    const { user } = requireSession(db, req);
+    const { user } = await requireSession(db, req);
     const body = await readJsonBody(req);
     if (!verifyPassword(String(body.password == null ? '' : body.password), user.password_hash)) {
       throw new HttpError(403, 'Enter your password to delete your account.', { field: 'password' });
     }
-    deleteUser(db, user.id);
+    await deleteUser(db, user.id);
     logEvent('account_deleted', { userId: user.id });
-    destroySession(db, req, res);
+    await destroySession(db, req, res);
     json(res, 200, { ok: true });
   }
 
@@ -300,16 +300,16 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       json(res, 200, { ok: true });
       return;
     }
-    const gate = resetLimiter.consume(clientIp(req) + ':' + email.value);
+    const gate = await resetLimiter.consume(clientIp(req) + ':' + email.value);
     if (!gate.allowed) {
       json(res, 200, { ok: true });
       return;
     }
-    const user = getUserByEmail(db, email.value);
+    const user = await getUserByEmail(db, email.value);
     if (user) {
       const token = randomToken(32);
       const expiresAt = new Date(Date.now() + RESET_TOKEN_LIFETIME_MS).toISOString();
-      createResetToken(db, user.id, sha256Hex(token), expiresAt);
+      await createResetToken(db, user.id, sha256Hex(token), expiresAt);
       const url = `${originOf(req)}#/reset?token=${encodeURIComponent(token)}`;
       mailer(resetPasswordMail(user.email, url)).catch((error) => logEvent('reset_mail_failed', { userId: user.id, error: error.message }));
       logEvent('password_reset_requested', { userId: user.id });
@@ -321,17 +321,17 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     const body = await readJsonBody(req);
     const token = String(body.token == null ? '' : body.token).trim();
     if (!token) throw new HttpError(400, 'Include the reset token from your email.');
-    const row = findResetToken(db, sha256Hex(token));
+    const row = await findResetToken(db, sha256Hex(token));
     if (!row || row.used_at !== null || row.expires_at < new Date().toISOString()) {
       logEvent('password_reset_failed', { reason: row ? 'expired_or_used' : 'unknown_token' });
       throw new HttpError(400, 'This reset link is invalid or expired. Request a new one.');
     }
     const next = validatePassword(body.newPassword);
     if (next.error) throw new HttpError(400, next.error, { field: 'newPassword' });
-    updateUserPassword(db, row.user_id, hashPassword(next.value));
-    useResetToken(db, sha256Hex(token));
-    markEmailVerified(db, row.user_id);
-    deleteAllSessionsForUser(db, row.user_id);
+    await updateUserPassword(db, row.user_id, hashPassword(next.value));
+    await useResetToken(db, sha256Hex(token));
+    await markEmailVerified(db, row.user_id);
+    await deleteAllSessionsForUser(db, row.user_id);
     logEvent('password_reset_completed', { userId: row.user_id });
     json(res, 200, { ok: true });
   }
@@ -340,37 +340,37 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     const body = await readJsonBody(req);
     const token = String(body.token == null ? '' : body.token).trim();
     if (!token) throw new HttpError(400, 'Include the verification token from your email.');
-    const row = findVerifyToken(db, sha256Hex(token));
+    const row = await findVerifyToken(db, sha256Hex(token));
     if (!row || row.used_at !== null || row.expires_at < new Date().toISOString()) {
       logEvent('verify_failed', { reason: row ? 'expired_or_used' : 'unknown_token' });
       throw new HttpError(400, 'This verification link is invalid or expired. Request a new one.');
     }
-    markEmailVerified(db, row.user_id);
-    useVerifyToken(db, sha256Hex(token));
+    await markEmailVerified(db, row.user_id);
+    await useVerifyToken(db, sha256Hex(token));
     logEvent('verify_completed', { userId: row.user_id });
     json(res, 200, { ok: true });
   }
 
   async function verifyResend(req, res) {
     requireCsrf(req);
-    const { user } = requireSession(db, req);
+    const { user } = await requireSession(db, req);
     if (user.email_verified_at) {
       json(res, 200, { ok: true });
       return;
     }
-    const gate = resetLimiter.consume('verify:' + user.id);
+    const gate = await resetLimiter.consume('verify:' + user.id);
     if (!gate.allowed) {
       json(res, 200, { ok: true });
       return;
     }
-    const token = issueVerifyToken(req, user);
+    const token = await issueVerifyToken(req, user);
     mailVerifyToken(req, user, token).catch((error) => logEvent('verify_resend_failed', { userId: user.id, error: error.message }));
     json(res, 200, { ok: true });
   }
 
   async function listSessions(req, res) {
-    const { user, session } = requireSession(db, req);
-    const rows = listSessionsForUser(db, user.id);
+    const { user, session } = await requireSession(db, req);
+    const rows = await listSessionsForUser(db, user.id);
     json(res, 200, {
       sessions: rows.map((row) => ({
         id: row.id,
@@ -387,10 +387,10 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   async function revokeSession(req, res, id) {
     // Single implementation used by the /:id route in handle().
     requireCsrf(req);
-    const { user } = requireSession(db, req);
-    const target = getSessionById(db, Number(id));
+    const { user } = await requireSession(db, req);
+    const target = await getSessionById(db, Number(id));
     if (!target || target.user_id !== user.id) throw new HttpError(404, 'That session does not exist.');
-    deleteSessionByTokenHash(db, target.token_hash);
+    await deleteSessionByTokenHash(db, target.token_hash);
     logEvent('session_revoked', { userId: user.id, sessionId: target.id });
     json(res, 200, { ok: true });
   }
@@ -399,8 +399,8 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
 
   async function revokeAllSessions(req, res) {
     requireCsrf(req);
-    const { user } = requireSession(db, req);
-    deleteAllSessionsForUser(db, user.id);
+    const { user } = await requireSession(db, req);
+    await deleteAllSessionsForUser(db, user.id);
     logEvent('sessions_revoked_all', { userId: user.id });
     const secure = process.env.NODE_ENV === 'production';
     res.setHeader('Set-Cookie', [clearSessionCookie({ secure }), clearCsrfCookie({ secure })]);
@@ -408,16 +408,16 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   }
 
   async function dataExport(req, res) {
-    const { user } = requireSession(db, req);
-    const prefs = loadWrappedPrefs(db, user.id);
+    const { user } = await requireSession(db, req);
+    const prefs = await loadWrappedPrefs(db, user.id);
     res.setHeader('Content-Disposition', `attachment; filename="aniglobe-export-${user.username.toLowerCase()}.json"`);
     json(res, 200, {
       exportedAt: new Date().toISOString(),
       user: { ...publicUser(user), bio: user.bio || null, hasAvatar: Boolean(user.avatar_data) },
       wrappedPrefs: prefs ? prefs.payload : null,
-      templates: listTemplates(db, user.id),
-      guessProgress: listGuessProgress(db, user.id),
-      activeSessionCount: countActiveSessions(db, user.id),
+      templates: await listTemplates(db, user.id),
+      guessProgress: await listGuessProgress(db, user.id),
+      activeSessionCount: await countActiveSessions(db, user.id),
     });
   }
 
@@ -430,13 +430,13 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   }
 
   async function getOwnProfile(req, res) {
-    const { user } = requireSession(db, req);
+    const { user } = await requireSession(db, req);
     json(res, 200, { profile: ownProfile(user) });
   }
 
   async function updateOwnProfile(req, res) {
     requireCsrf(req);
-    const { user } = requireSession(db, req);
+    const { user } = await requireSession(db, req);
     const body = await readJsonBody(req);
     const bio = body.bio == null ? null : String(body.bio).trim();
     if (bio !== null && bio.length > BIO_MAX_CHARS) {
@@ -457,15 +457,15 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
         throw new HttpError(413, 'Avatar image is too large. Use an image under 150 KB after resizing.', { field: 'avatar' });
       }
     }
-    updateProfile(db, user.id, { bio: bio || null, avatarData });
-    const next = getUserById(db, user.id);
+    await updateProfile(db, user.id, { bio: bio || null, avatarData });
+    const next = await getUserById(db, user.id);
     json(res, 200, { profile: ownProfile(next) });
   }
 
-  function publicProfile(user) {
-    const summary = guessSummary(db, user.id);
+  async function publicProfile(user) {
+    const summary = await guessSummary(db, user.id);
     const total = summary.total;
-    const progress = listGuessProgress(db, user.id);
+    const progress = await listGuessProgress(db, user.id);
     const nowDate = new Date();
     const localMidnight = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
     const todayIndex = Math.floor(localMidnight.getTime() / 86400000);
@@ -486,9 +486,9 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   }
 
   async function handlePublicProfile(req, res, username) {
-    const user = getUserByUsername(db, username);
+    const user = await getUserByUsername(db, username);
     if (!user) throw new HttpError(404, 'That profile does not exist.');
-    json(res, 200, { profile: publicProfile(user) });
+    json(res, 200, { profile: await publicProfile(user) });
   }
 
   function shapePrefs(payload) {
@@ -498,24 +498,24 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   }
 
   async function wrappedPrefs(req, res) {
-    const { user } = requireSession(db, req);
+    const { user } = await requireSession(db, req);
     if (req.method === 'GET') {
-      const saved = loadWrappedPrefs(db, user.id);
+      const saved = await loadWrappedPrefs(db, user.id);
       json(res, 200, { prefs: saved ? saved.payload : null, updatedAt: saved ? saved.updatedAt : null });
       return;
     }
     requireCsrf(req);
     const body = await readJsonBody(req);
     const prefs = shapePrefs(body.prefs);
-    saveWrappedPrefs(db, user.id, prefs);
+    await saveWrappedPrefs(db, user.id, prefs);
     json(res, 200, { ok: true });
   }
 
   async function templates(req, res, parts) {
-    const { user } = requireSession(db, req);
+    const { user } = await requireSession(db, req);
     if (parts.length === 0) {
       if (req.method === 'GET') {
-        json(res, 200, { templates: listTemplates(db, user.id) });
+        json(res, 200, { templates: await listTemplates(db, user.id) });
         return;
       }
       requireCsrf(req);
@@ -524,13 +524,13 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       if (!name || name.length > 64) throw new HttpError(400, 'Template names need 1–64 characters.', { field: 'name' });
       if (!body.payload || typeof body.payload !== 'object') throw new HttpError(400, 'Template payload must be a JSON object.');
       if (Buffer.byteLength(JSON.stringify(body.payload)) > 128 * 1024) throw new HttpError(413, 'Template is too large.');
-      upsertTemplate(db, user.id, { name, payload: body.payload });
+      await upsertTemplate(db, user.id, { name, payload: body.payload });
       json(res, 200, { ok: true, name });
       return;
     }
     if (parts.length === 1 && req.method === 'DELETE') {
       requireCsrf(req);
-      deleteTemplate(db, user.id, decodeURIComponent(parts[0]));
+      await deleteTemplate(db, user.id, decodeURIComponent(parts[0]));
       json(res, 200, { ok: true });
       return;
     }
@@ -539,7 +539,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       const body = await readJsonBody(req);
       const isPublic = body.isPublic === true;
       const name = decodeURIComponent(parts[0]);
-      if (!setTemplatePublic(db, user.id, name, isPublic)) {
+      if (!(await setTemplatePublic(db, user.id, name, isPublic))) {
         throw new HttpError(404, 'That template does not exist.');
       }
       json(res, 200, { ok: true, name, isPublic });
@@ -548,38 +548,38 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     throw new HttpError(404, 'Unknown endpoint.');
   }
 
-  function publicLibrary(req, res) {
+  async function publicLibrary(req, res) {
     // No auth: the library is intentionally public. Only public templates
     // (explicit opt-in) are listed, with author + theme but no payload spam.
-    json(res, 200, { templates: listPublicTemplates(db, { limit: 50 }) });
+    json(res, 200, { templates: await listPublicTemplates(db, { limit: 50 }) });
   }
 
   async function usePublicTemplate(req, res, id) {
-    const { user } = requireSession(db, req);
+    const { user } = await requireSession(db, req);
     requireCsrf(req);
-    const source = getPublicTemplateById(db, Number(id));
+    const source = await getPublicTemplateById(db, Number(id));
     if (!source || !source.payload) throw new HttpError(404, 'That template does not exist.');
     // Copy into the caller under a disambiguated name; never overwrite
     // silently — suffix with (n) until free (case-insensitive).
     let name = source.name;
-    const existing = new Set(listTemplates(db, user.id).map((t) => t.name.toLowerCase()));
+    const existing = new Set((await listTemplates(db, user.id)).map((t) => t.name.toLowerCase()));
     if (existing.has(name.toLowerCase())) {
       let n = 2;
       while (existing.has((source.name + ' (' + n + ')').toLowerCase())) n += 1;
       name = source.name + ' (' + n + ')';
     }
-    upsertTemplate(db, user.id, { name, payload: source.payload });
+    await upsertTemplate(db, user.id, { name, payload: source.payload });
     json(res, 200, { ok: true, name, payload: source.payload });
   }
 
   async function guess(req, res) {
-    const { user } = requireSession(db, req);
+    const { user } = await requireSession(db, req);
     if (req.method === 'GET') {
       const mediaType = new URL(req.url, 'http://placeholder').searchParams.get('media');
       if (mediaType && mediaType !== 'anime' && mediaType !== 'manga') {
         throw new HttpError(400, 'media must be "anime" or "manga".');
       }
-      json(res, 200, { progress: listGuessProgress(db, user.id, mediaType || null) });
+      json(res, 200, { progress: await listGuessProgress(db, user.id, mediaType || null) });
       return;
     }
     requireCsrf(req);
@@ -592,7 +592,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       throw new HttpError(400, 'dayIndex must be a non-negative integer.');
     }
     const score = Number.isInteger(body.score) ? body.score : 0;
-    saveGuessProgress(db, user.id, { mediaType, dayIndex: body.dayIndex, score, won: body.won === true });
+    await saveGuessProgress(db, user.id, { mediaType, dayIndex: body.dayIndex, score, won: body.won === true });
     json(res, 200, { ok: true });
   }
 
@@ -620,7 +620,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     const pathname = url.pathname;
 
     if (pathname === '/api/templates/public' && req.method === 'GET') {
-      publicLibrary(req, res);
+      await publicLibrary(req, res);
       return;
     }
     if (pathname.startsWith('/api/templates/public/') || pathname === '/api/templates/public/use') {
