@@ -14,6 +14,7 @@ Thumbs.db
 RUNBOOK.md
 copy-deck.md
 DESIGN.md
+artifacts/
 !assets/logo/**/*.png
 *.txt
 tmp-probe.txt
