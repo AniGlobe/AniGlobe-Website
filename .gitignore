@@ -10,6 +10,10 @@ Thumbs.db
 .claude/
 .agents/
 /AGENTS.md
+# planning / copy / design docs — keep local, do not commit or push (AGENTS.md norms)
+RUNBOOK.md
+copy-deck.md
+DESIGN.md
 !assets/logo/**/*.png
 *.txt
 tmp-probe.txt
