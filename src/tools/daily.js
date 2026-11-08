@@ -7,9 +7,10 @@
 
 import { el, render, store, copyText, dateKey, dayIndex, hashString, setStatus } from '../lib.js';
 import { fetchDailyPuzzle } from '../providers/mal.js';
-import { getSession, pushGuessProgress } from '../auth.js';
+import { getSession, pullGuessProgress, pushGuessProgress } from '../auth.js';
 import { site } from '../config.js';
 import { resolveMediaType } from '../domain/media.js';
+import { currentStreak } from '../domain/streak.js';
 
 const MAX_CLUES = 5;
 const START_SCORE = 500;
@@ -193,6 +194,23 @@ export default {
     yesterday.setDate(yesterday.getDate() - 1);
     if (lastDate !== today && (lastDate !== dateKey(yesterday) || lastIndex !== index - 1)) {
       streak = 0;
+    }
+    // Reconcile with server history when signed in: another device may have
+    // extended the streak while this browser was away. The server is the
+    // shared truth; the local value only wins if it is simply ahead.
+    if (getSession()) {
+      pullGuessProgress(media.id)
+        .then((rows) => {
+          const serverStreak = currentStreak(rows, { mediaType: media.id, todayIndex: index });
+          if (serverStreak > streak) {
+            streak = serverStreak;
+            store.set(storageKey('streak'), streak);
+            renderMeter();
+          }
+        })
+        .catch(() => {
+          /* offline: keep the local streak */
+        });
     }
 
     const meter = el('div', { class: 'daily-meter kpis', 'aria-live': 'polite' });

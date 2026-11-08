@@ -369,7 +369,13 @@ export default {
       'div',
       { class: 'wrapped-templates' },
       el('h3', { class: 'wrapped-subtitle' }, 'Saved templates'),
-      el('p', { class: 'hint' }, 'Saving keeps a template private. Publish to add it to the public library.'),
+      el(
+        'p',
+        { class: 'hint' },
+        'Saving keeps a template private. Publish to add it to the ',
+        el('a', { href: '#/library' }, 'public library'),
+        '.'
+      ),
       templateSelect,
       el('div', { class: 'wrapped-template-actions' }, templateName, saveTemplateButton, publishTemplateButton, deleteTemplateButton)
     );
@@ -844,7 +850,7 @@ export default {
         (template) => template.name.toLowerCase() === name.toLowerCase()
       );
       if (existingIndex < 0 && templates.length >= MAX_TEMPLATES) {
-        setStatus(cardStatus, 'This browser already has 20 saved templates. Delete one to save another.', 'error');
+        setStatus(cardStatus, 'This browser already has ' + MAX_TEMPLATES + ' saved templates. Delete one to save another.', 'error');
         return;
       }
       const keptPublic = existingIndex >= 0 && templates[existingIndex].isPublic === true;

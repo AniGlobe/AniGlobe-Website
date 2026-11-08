@@ -22,6 +22,7 @@ export default {
     });
     const list = el('ul', { class: 'library-list' });
     const empty = el('p', { class: 'account-danger-note' }, 'No public templates yet. Publish one from the card studio to appear here.');
+    const noResults = el('p', { class: 'account-danger-note' }, 'No templates match your search.');
 
     render(
       root,
@@ -37,13 +38,21 @@ export default {
         el('div', { class: 'field' }, el('label', { for: 'library-search' }, 'Search'), search),
         status,
         list,
-        empty
+        empty,
+        noResults
       )
     );
 
     let all = [];
     async function refresh() {
-      all = await listPublicTemplates();
+      setStatus(status, 'Loading library…', 'info');
+      try {
+        all = await listPublicTemplates();
+        setStatus(status, '', 'info');
+      } catch {
+        all = [];
+        setStatus(status, 'Could not load the library. Check your connection and try again.', 'error');
+      }
       paint();
     }
 
@@ -52,7 +61,8 @@ export default {
       const filtered = query
         ? all.filter((t) => t.name.toLowerCase().includes(query) || t.author.toLowerCase().includes(query))
         : all;
-      empty.hidden = filtered.length > 0;
+      empty.hidden = !(all.length === 0 && !query);
+      noResults.hidden = !(query && filtered.length === 0 && all.length > 0);
       render(
         list,
         ...filtered.map((template) =>
@@ -63,9 +73,14 @@ export default {
               'div',
               {},
               el('p', { class: 'library-name' }, template.name),
-              el('p', { class: 'library-meta' }, '@' + template.author + (template.theme ? ' · ' + template.theme : '') + ' · ' + new Date(template.updatedAt).toLocaleDateString())
+              el(
+                'p',
+                { class: 'library-meta' },
+                el('a', { href: '#/profile?u=' + encodeURIComponent(template.author) }, '@' + template.author),
+                (template.theme ? ' · ' + template.theme : '') + ' · ' + new Date(template.updatedAt).toLocaleDateString()
+              )
             ),
-            el('button', { class: 'btn btn-outline btn-sm', type: 'button', dataset: { use: String(template.id) } }, 'Use template')
+            el('button', { class: 'btn btn-outline btn-sm library-use', type: 'button', dataset: { use: String(template.id) } }, 'Use template')
           )
         )
       );
@@ -75,16 +90,21 @@ export default {
 
     list.addEventListener('click', async (event) => {
       const button = event.target.closest('button[data-use]');
-      if (!button) return;
+      if (!button || button.disabled) return;
       if (!getSession()) {
         setStatus(status, 'Log in to add a public template to your account.', 'error');
         return;
       }
+      button.disabled = true;
+      button.textContent = 'Saving…';
       try {
         const result = await usePublicTemplate(button.dataset.use);
         setStatus(status, '"' + result.name + '" saved. Open the card studio to apply it.', 'info');
       } catch (error) {
         setStatus(status, error instanceof AuthError ? error.message : 'Could not add that template.', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Use template';
       }
     });
 

@@ -28,3 +28,5 @@ data/
 *.db-wal
 *.db-wal2
 *.db-wal3
+.vercel
+.env*

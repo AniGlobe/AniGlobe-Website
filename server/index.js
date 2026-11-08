@@ -146,6 +146,7 @@ const server = createServer(async (req, res) => {
       } catch {
         dbOk = false;
       }
+      for (const [key, value] of Object.entries(securityHeaders())) res.setHeader(key, value);
       json(res, dbOk ? 200 : 503, { ok: dbOk, uptimeSeconds: Math.floor((Date.now() - BOOTED_AT) / 1000), db: dbOk ? 'ok' : 'down' });
       return;
     }

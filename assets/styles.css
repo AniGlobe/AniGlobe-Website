@@ -1895,7 +1895,21 @@ html.wrapped-dialog-open { overflow: hidden; }
   margin-top: var(--s3);
   line-height: 1.6;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
+
+/* Topbar account avatar + primary-button focus (polish) */
+.topbar-account-link { gap: var(--s2); }
+.topbar-avatar {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+.btn-primary:focus-visible { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35); outline-offset: 2px; }
+.library-meta a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
 /* Public template library */
 .library-list { display: grid; gap: var(--s2); list-style: none; margin-top: var(--s3); padding: 0; }

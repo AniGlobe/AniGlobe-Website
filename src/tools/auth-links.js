@@ -42,7 +42,7 @@ export function renderVerify(root) {
       el(
         'p',
         { style: { marginTop: '16px' } },
-        el('a', { class: 'btn btn-primary', href: '#/card' }, 'Back to AniManga Wrapped')
+        el('a', { class: 'btn btn-primary', href: '#/account' }, 'Go to my account')
       ),
     ]
   );
@@ -88,7 +88,14 @@ export function renderReset(root) {
     root,
     'Reset your password',
     'Links expire after one hour and work once.',
-    [form]
+    [
+      form,
+      el(
+        'p',
+        { style: { marginTop: '16px' } },
+        el('a', { class: 'btn btn-quiet', href: '#/card' }, 'Back to AniManga Wrapped')
+      ),
+    ]
   );
 
   if (!token) {

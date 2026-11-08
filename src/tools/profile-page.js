@@ -30,7 +30,12 @@ export function renderProfile(root) {
       el('h1', {}, username ? '@' + username : 'Profile'),
       el('p', {}, 'Public AniGlobe profile.')
     ),
-    el('section', { class: 'panel account-panel' }, content)
+    el('section', { class: 'panel account-panel' }, content),
+    el(
+      'p',
+      { style: { marginTop: '16px' } },
+      el('a', { class: 'btn btn-quiet', href: '#/library' }, 'Browse the template library')
+    )
   );
 
   if (!username) {

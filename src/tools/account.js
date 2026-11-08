@@ -165,12 +165,14 @@ export default {
       );
       const recentList = el('ul', { class: 'account-history-list' });
       const historyEmpty = el('p', { class: 'account-danger-note' }, 'No synced results yet. Finish a daily round while signed in and it will appear here.');
+      const streakBreakdown = el('p', { class: 'account-danger-note' });
 
       const guessSection = el(
         'section',
         { class: 'panel account-panel' },
         el('h2', { class: 'panel-title' }, 'Guess history'),
         historyStats,
+        streakBreakdown,
         el(
           'div',
           { class: 'account-calendar-head' },
@@ -187,7 +189,8 @@ export default {
 
       // --- public profile: bio + avatar (Track B · B001) -------------------
       const avatarPreview = el('img', { class: 'account-avatar', alt: 'Your avatar', hidden: true });
-      const bioInput = el('textarea', { id: 'account-bio', maxlength: String(BIO_MAX_CHARS), rows: '3', placeholder: 'A short bio…' });
+      const bioInput = el('textarea', { id: 'account-bio', maxlength: String(BIO_MAX_CHARS), rows: '3', placeholder: 'A short bio…', 'aria-describedby': 'account-bio-count' });
+      const bioCount = el('p', { class: 'account-danger-note', id: 'account-bio-count' });
       const avatarFile = el('input', { type: 'file', id: 'account-avatar-file', accept: 'image/jpeg,image/png,image/webp' });
       const avatarStatus = el('p', { class: 'account-danger-note' });
       const removeAvatarButton = el('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, 'Remove avatar');
@@ -202,7 +205,7 @@ export default {
           avatarFile
         ),
         avatarStatus,
-        el('div', { class: 'field' }, el('label', { for: 'account-bio' }, 'Bio'), bioInput),
+        el('div', { class: 'field' }, el('label', { for: 'account-bio' }, 'Bio'), bioInput, bioCount),
         profileSaveButton,
         removeAvatarButton
       );
@@ -238,10 +241,22 @@ export default {
           avatarStatus.textContent = 'Generated initial avatar — upload an image to replace it.';
         }
         removeAvatarButton.hidden = !(profile && profile.avatar);
+        updateBioCount();
       }
+
+      function updateBioCount() {
+        bioCount.textContent = bioInput.value.length + ' / ' + BIO_MAX_CHARS;
+      }
+      bioInput.addEventListener('input', updateBioCount);
 
       avatarFile.addEventListener('change', async () => {
         if (!avatarFile.files || !avatarFile.files[0]) return;
+        const file = avatarFile.files[0];
+        // Pre-check before resize: the server caps the stored image at 150 KB.
+        if (file.size > 2 * 1024 * 1024) {
+          avatarStatus.textContent = 'That image is over 2 MB. Pick a smaller image — it will be resized to 256 px.';
+          return;
+        }
         avatarStatus.textContent = 'Resizing image…';
         try {
           pendingAvatar = await resizeImageToDataUrl(avatarFile.files[0], AVATAR_MAX_DIM);
@@ -342,6 +357,10 @@ export default {
           el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Streak'), el('strong', { class: 'kpi-value num' }, String(summary.currentStreak))),
           el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Best'), el('strong', { class: 'kpi-value num' }, String(summary.bestStreak)))
         );
+        streakBreakdown.textContent =
+          'Anime streak ' + summary.byMedia.anime.currentStreak +
+          ' · Manga streak ' + summary.byMedia.manga.currentStreak +
+          ' (best ' + Math.max(summary.byMedia.anime.bestStreak, summary.byMedia.manga.bestStreak) + ')';
         renderCalendar();
         render(
           recentList,

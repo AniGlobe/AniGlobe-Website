@@ -12,6 +12,7 @@ import { getSession, logout, onSessionChange, refreshSession } from './auth.js';
 import { createAuthDialog } from './tools/auth-dialog.js';
 import { renderReset, renderVerify } from './tools/auth-links.js';
 import { renderProfile } from './tools/profile-page.js';
+import { initialAvatarDataUrl } from './domain/avatar.js';
 
 const dom = {
   topbarBrand: document.querySelector('.topbar-brand'),
@@ -35,7 +36,16 @@ function renderTopbarAuth() {
   const session = getSession();
   const actions = [];
   if (session) {
-    const accountLink = el('a', { class: 'btn btn-outline btn-sm', href: '#/account' }, session.user.username);
+    const accountLink = el(
+      'a',
+      { class: 'btn btn-outline btn-sm topbar-account-link', href: '#/account' },
+      el('img', {
+        class: 'topbar-avatar',
+        src: initialAvatarDataUrl(session.user.username),
+        alt: '',
+      }),
+      el('span', {}, session.user.username)
+    );
     const logoutButton = el('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, 'Log out');
     logoutButton.addEventListener('click', async () => {
       await logout();
@@ -79,7 +89,7 @@ function renderNav() {
 }
 
 function renderFooter() {
-  const toolLinks = tools.map((tool) =>
+  const toolLinks = tools.filter((tool) => !tool.hidden).map((tool) =>
     el('a', { href: '#/' + tool.id }, tool.label)
   );
   const sources = [
@@ -186,6 +196,7 @@ async function mountRoute() {
     runCleanup();
     render(dom.app);
     renderVerify(dom.app);
+    document.title = 'Confirm your email | ' + site.name;
     dom.app.focus({ preventScroll: true });
     return;
   }
@@ -194,6 +205,7 @@ async function mountRoute() {
     runCleanup();
     render(dom.app);
     renderReset(dom.app);
+    document.title = 'Reset your password | ' + site.name;
     dom.app.focus({ preventScroll: true });
     return;
   }
@@ -202,6 +214,7 @@ async function mountRoute() {
     runCleanup();
     render(dom.app);
     renderProfile(dom.app);
+    document.title = 'Profile | ' + site.name;
     dom.app.focus({ preventScroll: true });
     return;
   }
