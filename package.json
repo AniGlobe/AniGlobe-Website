@@ -10,5 +10,14 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "nodemailer": "^10.4.0"
+  },
+  "devDependencies": {
+    "maildev": "^2.2.1"
+  },
+  "overrides": {
+    "nodemailer": "^10.4.0"
   }
 }

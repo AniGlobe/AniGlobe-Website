@@ -3,11 +3,15 @@
  *
  * Interface: sendMail({ to, subject, text }) -> Promise<void>
  *
- * Default transport is console: the message is logged (dev convenience). To
- * send real mail, swap in an SMTP transport by setting MAIL_TRANSPORT=smtp and
- * the SMTP_* variables — or drop in a hosted-provider SDK here. The API layer
- * never knows which transport is behind the interface.
+ * Default transport is console (the message is logged — fine for dev).
+ * Set MAIL_TRANSPORT=smtp to send real mail with a standard SMTP provider
+ * (Brevo free tier, Resend, SES, Postmark, SendGrid, Mailgun, ...).
+ * Required when smtp: SMTP_HOST, MAIL_FROM. PORT/USER/PASS per provider.
+ * Local testing without any account: run a catcher (Mailpit or Maildev)
+ * and point SMTP_HOST at localhost — no domain needed.
  */
+
+import nodemailer from 'nodemailer';
 
 const SITE_NAME = 'AniGlobe';
 
@@ -15,24 +19,40 @@ function mailFrom() {
   return process.env.MAIL_FROM || 'AniGlobe <no-reply@localhost>';
 }
 
-function smtpAvailable() {
-  return process.env.MAIL_TRANSPORT === 'smtp';
-}
+let transport = null;
+let transportWarned = false;
 
-let warned = false;
+function smtpTransport() {
+  if (transport) return transport;
+  const host = process.env.SMTP_HOST;
+  if (!host) return null;
+  const port = Number(process.env.SMTP_PORT || 587);
+  transport = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: process.env.SMTP_USER
+      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' }
+      : undefined,
+  });
+  return transport;
+}
 
 export async function sendMail({ to, subject, text }) {
   const message = { from: mailFrom(), to, subject, text };
 
-  if (smtpAvailable()) {
-    // Intentionally not implemented without a transport dependency: the
-    // interface exists so the endpoints work the moment one is configured.
-    throw new Error('MAIL_TRANSPORT=smtp is not configured yet. Set up the SMTP transport in server/mail.js.');
+  if (process.env.MAIL_TRANSPORT === 'smtp') {
+    const transport = smtpTransport();
+    if (!transport) {
+      throw new Error('MAIL_TRANSPORT=smtp but SMTP_HOST is not set.');
+    }
+    await transport.sendMail(message);
+    return;
   }
 
-  if (!warned) {
-    warned = true;
-    process.stderr.write('[aniglobe-mail] console transport active: set MAIL_TRANSPORT to send real mail.\n');
+  if (!transportWarned) {
+    transportWarned = true;
+    process.stderr.write('[aniglobe-mail] console transport active: set MAIL_TRANSPORT=smtp (+ SMTP_*) to send real mail.\n');
   }
   process.stderr.write(`[aniglobe-mail] ${JSON.stringify({ ...message })}\n`);
 }
