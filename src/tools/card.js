@@ -1,7 +1,7 @@
 import { el, render, setStatus, copyText, store } from '../lib.js';
 import { exportNode, pngFileName } from '../export.js';
 import { resolveMediaType } from '../domain/media.js';
-import { buildShareUrl, decodeTemplateShare, shareCodeFromHash } from '../domain/share.js';
+import { decodeTemplateShare, shareCodeFromHash } from '../domain/share.js';
 import { renderCard, summaryText, globeStamp, sanitizeCardColors } from './card-view.js';
 import { getProvider, providers } from '../providers/index.js';
 import {
@@ -12,6 +12,7 @@ import {
   pullWrappedPrefs,
   pushTemplate,
   pushWrappedPrefs,
+  setTemplatePublic,
 } from '../auth.js';
 
 const PREFERENCES_KEY = 'wrapped:preferences';
@@ -362,15 +363,15 @@ export default {
       'aria-label': 'Template name',
     });
     const saveTemplateButton = el('button', { class: 'btn btn-outline', type: 'button' }, 'Save template');
-    const shareTemplateButton = el('button', { class: 'btn btn-quiet', type: 'button' }, 'Copy share link');
+    const publishTemplateButton = el('button', { class: 'btn btn-quiet', type: 'button', disabled: true }, 'Publish');
     const deleteTemplateButton = el('button', { class: 'btn btn-outline', type: 'button', disabled: true }, 'Delete selected');
     const templateControls = el(
       'div',
       { class: 'wrapped-templates' },
       el('h3', { class: 'wrapped-subtitle' }, 'Saved templates'),
-      el('p', { class: 'hint' }, 'Templates stay in this browser. Saving an existing name replaces it. Share links never leave this page.'),
+      el('p', { class: 'hint' }, 'Saving keeps a template private. Publish to add it to the public library.'),
       templateSelect,
-      el('div', { class: 'wrapped-template-actions' }, templateName, saveTemplateButton, shareTemplateButton, deleteTemplateButton)
+      el('div', { class: 'wrapped-template-actions' }, templateName, saveTemplateButton, publishTemplateButton, deleteTemplateButton)
     );
     const editor = el(
       'section',
@@ -520,10 +521,15 @@ export default {
       render(
         templateSelect,
         el('option', { value: '' }, 'Choose a saved template'),
-        ...templates.map((template) => el('option', { value: template.name }, template.name))
+        ...templates.map((template) =>
+          el('option', { value: template.name }, template.name + (template.isPublic ? ' (public)' : ''))
+        )
       );
       templateSelect.value = templates.some((template) => template.name === selected) ? selected : '';
       deleteTemplateButton.disabled = !templateSelect.value;
+      publishTemplateButton.disabled = !templateSelect.value;
+      const current = templates.find((t) => t.name === templateSelect.value);
+      publishTemplateButton.textContent = current && current.isPublic ? 'Unpublish' : 'Publish';
     }
 
     function applyTemplate(template) {
@@ -631,7 +637,7 @@ export default {
         if (localByName.has(remote.name)) {
           merged.push(localByName.get(remote.name));
         } else {
-          merged.push({ name: remote.name, options: remote.payload });
+          merged.push({ name: remote.name, options: remote.payload, isPublic: remote.isPublic === true });
         }
       }
       for (const local of localTemplates) {
@@ -841,7 +847,8 @@ export default {
         setStatus(cardStatus, 'This browser already has 20 saved templates. Delete one to save another.', 'error');
         return;
       }
-      const template = { name, options: currentOptions() };
+      const keptPublic = existingIndex >= 0 && templates[existingIndex].isPublic === true;
+      const template = { name, options: currentOptions(), isPublic: keptPublic };
       if (existingIndex < 0) templates.push(template);
       else templates[existingIndex] = template;
       if (!store.set(TEMPLATES_KEY, templates)) {
@@ -855,7 +862,10 @@ export default {
     templateSelect.addEventListener('change', () => {
       const template = readTemplates().find((item) => item.name === templateSelect.value);
       if (template) applyTemplate(template);
-      else deleteTemplateButton.disabled = true;
+      else {
+        deleteTemplateButton.disabled = true;
+        publishTemplateButton.disabled = true;
+      }
     });
     deleteTemplateButton.addEventListener('click', () => {
       const name = templateSelect.value;
@@ -869,25 +879,25 @@ export default {
       deleteRemoteTemplate(name);
       setStatus(cardStatus, 'Template "' + name + '" deleted.', 'info');
     });
-    shareTemplateButton.addEventListener('click', async () => {
-      const selected = templateSelect.value
-        ? readTemplates().find((item) => item.name === templateSelect.value)
-        : null;
-      const name = (selected && selected.name) || templateName.value.trim() || 'Shared template';
-      const template = selected || { name, options: currentOptions() };
-      let url;
-      try {
-        url = buildShareUrl(template, window.location.origin + window.location.pathname);
-      } catch (error) {
-        setStatus(cardStatus, error && error.message ? error.message : 'Could not build a share link.', 'error');
+    publishTemplateButton.addEventListener('click', async () => {
+      const name = templateSelect.value;
+      if (!name) return;
+      if (!getSession()) {
+        setStatus(cardStatus, 'Log in to publish a template to the library.', 'error');
         return;
       }
-      const copied = await copyText(url);
-      setStatus(
-        cardStatus,
-        copied ? 'Share link for "' + template.name + '" copied to the clipboard.' : 'Could not copy the link. Check clipboard permissions and try again.',
-        copied ? 'info' : 'error'
-      );
+      const templates = readTemplates();
+      const current = templates.find((t) => t.name === name);
+      const nextPublic = !(current && current.isPublic);
+      try {
+        await setTemplatePublic(name, nextPublic);
+        const updated = templates.map((t) => t.name === name ? { ...t, isPublic: nextPublic } : t);
+        store.set(TEMPLATES_KEY, updated);
+        refreshTemplateSelect(name);
+        setStatus(cardStatus, nextPublic ? '"' + name + '" is now public in the library.' : '"' + name + '" unpublished.', 'info');
+      } catch (error) {
+        setStatus(cardStatus, error && error.message ? error.message : 'Could not update that template.', 'error');
+      }
     });
 
     // Shared-template import: `#/card?share=…` (fragment — never sent to the

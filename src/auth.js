@@ -273,6 +273,33 @@ export async function deleteRemoteTemplate(name) {
   }
 }
 
+export async function setTemplatePublic(name, isPublic) {
+  const { status, json } = await request('/api/sync/templates/' + encodeURIComponent(name), {
+    method: 'PUT',
+    body: { isPublic },
+  });
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not update that template.', json && json.details);
+  return true;
+}
+
+export async function listPublicTemplates() {
+  try {
+    const { status, json } = await request('/api/templates/public');
+    return status === 200 && json && Array.isArray(json.templates) ? json.templates : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function usePublicTemplate(id) {
+  const { status, json } = await request('/api/templates/public/' + encodeURIComponent(id) + '/use', {
+    method: 'POST',
+    body: {},
+  });
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not add that template.', json && json.details);
+  return json;
+}
+
 export async function pushGuessProgress(entry) {
   if (!getSession()) return false;
   try {

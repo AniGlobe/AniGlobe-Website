@@ -125,6 +125,12 @@ const MIGRATIONS = [
       ALTER TABLE users ADD COLUMN avatar_data TEXT;
     `);
   },
+  (db) => {
+    db.exec(`
+      ALTER TABLE templates ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0;
+      CREATE INDEX templates_public_idx ON templates (is_public, updated_at DESC);
+    `);
+  },
 ];
 
 function nowIso() {
@@ -327,13 +333,59 @@ export function upsertTemplate(db, userId, { name, payload }) {
 }
 
 export function listTemplates(db, userId) {
-  const rows = db.prepare('SELECT name, payload, updated_at FROM templates WHERE user_id = ? ORDER BY updated_at DESC')
+  const rows = db.prepare('SELECT name, payload, updated_at, is_public FROM templates WHERE user_id = ? ORDER BY updated_at DESC')
     .all(userId);
-  return rows.map((row) => ({ name: row.name, payload: JSON.parse(row.payload), updatedAt: row.updated_at }));
+  return rows.map((row) => ({ name: row.name, payload: JSON.parse(row.payload), updatedAt: row.updated_at, isPublic: row.is_public === 1 }));
 }
 
 export function deleteTemplate(db, userId, name) {
   db.prepare('DELETE FROM templates WHERE user_id = ? AND name = ? COLLATE NOCASE').run(userId, name);
+}
+
+export function setTemplatePublic(db, userId, name, isPublic) {
+  const result = db.prepare('UPDATE templates SET is_public = ?, updated_at = ? WHERE user_id = ? AND name = ? COLLATE NOCASE')
+    .run(isPublic ? 1 : 0, nowIso(), userId, name);
+  return result.changes > 0;
+}
+
+export function listPublicTemplates(db, { limit = 50 } = {}) {
+  const rows = db.prepare(`
+    SELECT templates.id, templates.name, templates.payload, templates.updated_at, users.username AS author
+    FROM templates JOIN users ON users.id = templates.user_id
+    WHERE templates.is_public = 1
+    ORDER BY templates.updated_at DESC LIMIT ?
+  `).all(limit);
+  return rows.map((row) => {
+    let payload = {};
+    try {
+      payload = JSON.parse(row.payload);
+    } catch {
+      payload = {};
+    }
+    return {
+      id: row.id,
+      name: row.name,
+      author: row.author,
+      theme: typeof payload.theme === 'string' ? payload.theme : null,
+      updatedAt: row.updated_at,
+    };
+  });
+}
+
+export function getPublicTemplateById(db, id) {
+  const row = db.prepare(`
+    SELECT templates.id, templates.name, templates.payload, templates.updated_at, templates.user_id, users.username AS author
+    FROM templates JOIN users ON users.id = templates.user_id
+    WHERE templates.id = ? AND templates.is_public = 1
+  `).get(id);
+  if (!row) return null;
+  let payload = null;
+  try {
+    payload = JSON.parse(row.payload);
+  } catch {
+    payload = null;
+  }
+  return { id: row.id, name: row.name, payload, userId: row.user_id, author: row.author };
 }
 
 /* -------------------------------------------------------- guess progress */

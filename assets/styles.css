@@ -1897,6 +1897,20 @@ html.wrapped-dialog-open { overflow: hidden; }
   overflow-wrap: anywhere;
 }
 
+/* Public template library */
+.library-list { display: grid; gap: var(--s2); list-style: none; margin-top: var(--s3); padding: 0; }
+.library-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.library-name { font-weight: 600; overflow-wrap: anywhere; }
+.library-meta { color: var(--muted); font-size: var(--fs-micro); margin-top: var(--s1); }
+
 /* Guess history + streak calendar (Track B · B002) */
 .account-history-kpis { gap: 1px; }
 .account-calendar-head {

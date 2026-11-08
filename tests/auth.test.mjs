@@ -460,6 +460,45 @@ test('data export bundles the account record and synced data', async () => {
   }
 });
 
+test('public template library: private stays hidden until published, use copies', async () => {
+  const { base, close } = await startTestServer();
+  try {
+    const owner = makeClient(base);
+    await owner.post('/api/auth/register', { username: 'Owner', email: 'owner@example.com', password: GOOD_PASSWORD });
+    await owner.post('/api/sync/templates', { name: 'Night plum', payload: { theme: 'night', layout: 'story' } });
+
+    const anon = makeClient(base);
+    assert.deepEqual((await anon.get('/api/templates/public')).json.templates, [], 'private templates are not listed');
+
+    const pub = await owner.put('/api/sync/templates/Night%20plum', { isPublic: true });
+    assert.equal(pub.status, 200);
+    assert.equal(pub.json.isPublic, true);
+
+    const listed = await anon.get('/api/templates/public');
+    assert.equal(listed.json.templates.length, 1);
+    assert.equal(listed.json.templates[0].name, 'Night plum');
+    assert.equal(listed.json.templates[0].author, 'Owner');
+    assert.equal(listed.json.templates[0].theme, 'night');
+    assert.equal('payload' in listed.json.templates[0], false, 'listing omits full payload');
+
+    const id = listed.json.templates[0].id;
+    assert.equal((await anon.post(`/api/templates/public/${id}/use`, {})).status, 401, 'anon cannot fork');
+
+    const fork = await owner.post(`/api/templates/public/${id}/use`, {});
+    assert.equal(fork.status, 200);
+    assert.equal(fork.json.name.startsWith('Night plum'), true);
+    const own = await owner.get('/api/sync/templates');
+    assert.equal(own.json.templates.some((t) => t.name === fork.json.name), true);
+
+    const unpub = await owner.put('/api/sync/templates/Night%20plum', { isPublic: false });
+    assert.equal(unpub.json.isPublic, false);
+    assert.deepEqual((await anon.get('/api/templates/public')).json.templates, []);
+    assert.equal((await owner.put('/api/sync/templates/missing', { isPublic: true })).status, 404);
+  } finally {
+    await close();
+  }
+});
+
 test('profile: own bio/avatar save, public read never leaks email', async () => {
   const { base, close } = await startTestServer();
   try {

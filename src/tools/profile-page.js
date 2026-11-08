@@ -8,6 +8,7 @@
 
 import { el, render } from '../lib.js';
 import { AuthError, getPublicProfile } from '../auth.js';
+import { initialAvatarDataUrl } from '../domain/avatar.js';
 
 function usernameFromHash() {
   const search = (window.location.hash && window.location.hash.includes('?'))
@@ -47,9 +48,11 @@ export function renderProfile(root) {
         return;
       }
       status.dataset.tone = '';
-      const avatar = profile.avatar
-        ? el('img', { class: 'account-avatar account-avatar-lg', src: profile.avatar, alt: 'Avatar for ' + profile.username })
-        : null;
+      const avatar = el('img', {
+        class: 'account-avatar account-avatar-lg',
+        src: profile.avatar || initialAvatarDataUrl(profile.username),
+        alt: 'Avatar for ' + profile.username,
+      });
       const badge = profile.verified
         ? el('span', { class: 'account-verified' }, 'Verified')
         : el('span', { class: 'account-unverified' }, 'Not verified');

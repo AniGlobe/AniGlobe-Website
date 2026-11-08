@@ -24,6 +24,7 @@ import {
 } from '../auth.js';
 import { resolveMediaType } from '../domain/media.js';
 import { buildMonthCalendar, dayIndexToDate, summarizeProgress } from '../domain/streak.js';
+import { initialAvatarDataUrl } from '../domain/avatar.js';
 
 const RECENT_LIMIT = 10;
 const BIO_MAX_CHARS = 280; // mirrors server/api.js BIO_MAX_CHARS
@@ -230,9 +231,11 @@ export default {
         if (profile && profile.avatar) {
           avatarPreview.src = profile.avatar;
           avatarPreview.hidden = false;
+          avatarStatus.textContent = 'Custom avatar shown on your public page.';
         } else {
-          avatarPreview.removeAttribute('src');
-          avatarPreview.hidden = true;
+          avatarPreview.src = initialAvatarDataUrl(session.user.username);
+          avatarPreview.hidden = false;
+          avatarStatus.textContent = 'Generated initial avatar — upload an image to replace it.';
         }
         removeAvatarButton.hidden = !(profile && profile.avatar);
       }
@@ -251,9 +254,9 @@ export default {
       });
       removeAvatarButton.addEventListener('click', () => {
         pendingAvatar = null;
-        avatarPreview.hidden = true;
-        avatarPreview.removeAttribute('src');
-        avatarStatus.textContent = 'Avatar will be removed on save.';
+        avatarPreview.src = initialAvatarDataUrl(session.user.username);
+        avatarPreview.hidden = false;
+        avatarStatus.textContent = 'Custom avatar will be removed on save (generated initial will show).';
       });
       profileForm.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -268,7 +271,8 @@ export default {
             avatarPreview.src = next.avatar;
             avatarPreview.hidden = false;
           } else {
-            avatarPreview.hidden = true;
+            avatarPreview.src = initialAvatarDataUrl(session.user.username);
+            avatarPreview.hidden = false;
           }
           removeAvatarButton.hidden = !(next && next.avatar);
           avatarStatus.textContent = 'Profile saved.';

@@ -57,6 +57,9 @@ import {
   updateUserPassword,
   updateProfile,
   guessSummary,
+  setTemplatePublic,
+  listPublicTemplates,
+  getPublicTemplateById,
   upsertTemplate,
   useResetToken,
   useVerifyToken,
@@ -523,7 +526,42 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       json(res, 200, { ok: true });
       return;
     }
+    if (parts.length === 1 && req.method === 'PUT') {
+      requireCsrf(req);
+      const body = await readJsonBody(req);
+      const isPublic = body.isPublic === true;
+      const name = decodeURIComponent(parts[0]);
+      if (!setTemplatePublic(db, user.id, name, isPublic)) {
+        throw new HttpError(404, 'That template does not exist.');
+      }
+      json(res, 200, { ok: true, name, isPublic });
+      return;
+    }
     throw new HttpError(404, 'Unknown endpoint.');
+  }
+
+  function publicLibrary(req, res) {
+    // No auth: the library is intentionally public. Only public templates
+    // (explicit opt-in) are listed, with author + theme but no payload spam.
+    json(res, 200, { templates: listPublicTemplates(db, { limit: 50 }) });
+  }
+
+  async function usePublicTemplate(req, res, id) {
+    const { user } = requireSession(db, req);
+    requireCsrf(req);
+    const source = getPublicTemplateById(db, Number(id));
+    if (!source || !source.payload) throw new HttpError(404, 'That template does not exist.');
+    // Copy into the caller under a disambiguated name; never overwrite
+    // silently — suffix with (n) until free (case-insensitive).
+    let name = source.name;
+    const existing = new Set(listTemplates(db, user.id).map((t) => t.name.toLowerCase()));
+    if (existing.has(name.toLowerCase())) {
+      let n = 2;
+      while (existing.has((source.name + ' (' + n + ')').toLowerCase())) n += 1;
+      name = source.name + ' (' + n + ')';
+    }
+    upsertTemplate(db, user.id, { name, payload: source.payload });
+    json(res, 200, { ok: true, name, payload: source.payload });
   }
 
   async function guess(req, res) {
@@ -572,6 +610,20 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   async function handle(req, res) {
     const url = new URL(req.url, 'http://placeholder');
     const pathname = url.pathname;
+
+    if (pathname === '/api/templates/public' && req.method === 'GET') {
+      publicLibrary(req, res);
+      return;
+    }
+    if (pathname.startsWith('/api/templates/public/') || pathname === '/api/templates/public/use') {
+      const idPart = pathname.slice('/api/templates/public/'.length);
+      const useMatch = idPart.match(/^(\d+)\/use$/u);
+      if (req.method === 'POST' && useMatch) {
+        await usePublicTemplate(req, res, useMatch[1]);
+        return;
+      }
+      throw new HttpError(404, 'Unknown endpoint.');
+    }
 
     if (pathname === '/api/sync/templates' || pathname.startsWith('/api/sync/templates/')) {
       const rest = pathname.slice('/api/sync/templates'.length).split('/').filter(Boolean);

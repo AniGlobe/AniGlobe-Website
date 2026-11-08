@@ -15,6 +15,7 @@ export const runtime = {
 
 export const tools = [
   { id: 'card', label: 'AniManga Wrapped', load: () => import('./tools/card.js') },
+  { id: 'library', label: 'Template library', load: () => import('./tools/library.js') },
   { id: 'daily', label: 'Anime Guess', mediaType: 'anime', load: () => import('./tools/daily.js') },
   { id: 'manga-daily', label: 'Manga Guess', mediaType: 'manga', load: () => import('./tools/daily.js') },
   { id: 'account', label: 'Account', hidden: true, load: () => import('./tools/account.js') },
