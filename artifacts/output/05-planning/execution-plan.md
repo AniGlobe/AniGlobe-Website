@@ -39,15 +39,15 @@
 
 | ID | Task | Est. (h) | Depends On | Parallel With | Done |
 |---|---|---|---|---|---|
-| T001 | **Persist rate limits** in SQLite (atomic `UPDATE... SET count = count + 1` with window check) so limits survive restarts; add reset/prune job; tests incl. restart persistence | 2 | — | T002, T003, T004, T005, T006 | [ ] |
-| T002 | **Session idle timeout + active-session list**: store `last_seen_at`, slide expiry on activity (idle cap 7 days), list devices on account page, per-device revoke, "sign out everywhere" button; tests | 3 | — | T001, T003, T004, T005, T006 | [ ] |
-| T003 | **Password reset**: token table (hashed tokens, 1h expiry, single-use), `POST /api/auth/password-reset/request` (always 200 — no oracle), `POST /api/auth/password-reset/confirm`; mail via a pluggable `mailer.js` interface with a console/dev stub until SMTP is configured; tests | 3 | — | T001, T002, T004, T005, T006 | [ ] |
-| T004 | **Email verification**: verify-token table, gate new accounts to "verify" state (login allowed but flagged until confirmed; resend with throttle), banner on account page; tests. Shares the mailer interface with T003 | 3 | T003 (mailer) | T001, T002, T005 | [ ] |
-| T005 | **Security headers**: CSP that keeps Google Fonts, Typekit, and the Jikan/AniList endpoints working (frame-ancestors none, no eval-inline), `well-known/security.txt`, tests for header presence | 2 | — | T001, T002, T003, T006 | [ ] |
-| T006 | **Security logging + health**: structured JSON events (login success/fail, register, password change, delete, rate-limit trip) to stderr; `GET /api/health` (db ping + uptime); log rotation note; tests | 2 | — | T001, T002, T003, T004, T005 | [ ] |
-| T007 | **Account data export (GDPR)**: `GET /api/auth/export` — user row, session count, prefs, templates, guess progress as a JSON download; account-page button; tests | 2 | T002 (session surface) | T001, T003, T004 | [ ] |
-| T008 | **Backup & restore drill**: documented `sqlite3`-free procedure (Node script: checkpoint + copy + integrity check), run against a scratch copy, record the drill in `RUNBOOK.md`; restore replaces `data/aniglobe.db` and restarts server | 1 | T001, T002, T003, T004, T005, T006, T007 | — | [ ] |
-| T009 | **Account page copy pass**: sync-status line ("synced 2h ago"), privacy wording alignment with README, empty states for templates; browser walkthrough | 1 | T002, T007 | — | [ ] |
+| T001 | **Persist rate limits** in SQLite (atomic `UPDATE... SET count = count + 1` with window check) so limits survive restarts; add reset/prune job; tests incl. restart persistence | 2 | — | T002, T003, T004, T005, T006 | [x] |
+| T002 | **Session idle timeout + active-session list**: store `last_seen_at`, slide expiry on activity (idle cap 7 days), list devices on account page, per-device revoke, "sign out everywhere" button; tests | 3 | — | T001, T003, T004, T005, T006 | [x] |
+| T003 | **Password reset**: token table (hashed tokens, 1h expiry, single-use), `POST /api/auth/password-reset/request` (always 200 — no oracle), `POST /api/auth/password-reset/confirm`; mail via a pluggable `mailer.js` interface with a console/dev stub until SMTP is configured; tests | 3 | — | T001, T002, T004, T005, T006 | [x] |
+| T004 | **Email verification**: verify-token table, gate new accounts to "verify" state (login allowed but flagged until confirmed; resend with throttle), banner on account page; tests. Shares the mailer interface with T003 | 3 | T003 (mailer) | T001, T002, T005 | [x] |
+| T005 | **Security headers**: CSP that keeps Google Fonts, Typekit, and the Jikan/AniList endpoints working (frame-ancestors none, no eval-inline), `well-known/security.txt`, tests for header presence | 2 | — | T001, T002, T003, T006 | [x] |
+| T006 | **Security logging + health**: structured JSON events (login success/fail, register, password change, delete, rate-limit trip) to stderr; `GET /api/health` (db ping + uptime); log rotation note; tests | 2 | — | T001, T002, T003, T004, T005 | [x] |
+| T007 | **Account data export (GDPR)**: `GET /api/auth/export` — user row, session count, prefs, templates, guess progress as a JSON download; account-page button; tests | 2 | T002 (session surface) | T001, T003, T004 | [x] |
+| T008 | **Backup & restore drill**: documented `sqlite3`-free procedure (Node script: checkpoint + copy + integrity check), run against a scratch copy, record the drill in `RUNBOOK.md`; restore replaces `data/aniglobe.db` and restarts server | 1 | T001, T002, T003, T004, T005, T006, T007 | — | [x] |
+| T009 | **Account page copy pass**: sync-status line ("synced 2h ago"), privacy wording alignment with README, empty states for templates; browser walkthrough | 1 | T002, T007 | — | [x] |
 
 ### Dependency graph
 
