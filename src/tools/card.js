@@ -1,6 +1,7 @@
 import { el, render, setStatus, copyText, store } from '../lib.js';
 import { exportNode, pngFileName } from '../export.js';
 import { resolveMediaType } from '../domain/media.js';
+import { buildShareUrl, decodeTemplateShare, shareCodeFromHash } from '../domain/share.js';
 import { renderCard, summaryText, globeStamp, sanitizeCardColors } from './card-view.js';
 import { getProvider, providers } from '../providers/index.js';
 import {
@@ -271,6 +272,7 @@ export default {
     let currentProfile = null;
     let currentCard = null;
     let sectionOrder = preferences.order.slice();
+    let sharedTemplate = null;
 
     const sourcePick = pickControl(
       'wrapped-source',
@@ -360,14 +362,15 @@ export default {
       'aria-label': 'Template name',
     });
     const saveTemplateButton = el('button', { class: 'btn btn-outline', type: 'button' }, 'Save template');
+    const shareTemplateButton = el('button', { class: 'btn btn-quiet', type: 'button' }, 'Copy share link');
     const deleteTemplateButton = el('button', { class: 'btn btn-outline', type: 'button', disabled: true }, 'Delete selected');
     const templateControls = el(
       'div',
       { class: 'wrapped-templates' },
       el('h3', { class: 'wrapped-subtitle' }, 'Saved templates'),
-      el('p', { class: 'hint' }, 'Templates stay in this browser. Saving an existing name replaces it.'),
+      el('p', { class: 'hint' }, 'Templates stay in this browser. Saving an existing name replaces it. Share links never leave this page.'),
       templateSelect,
-      el('div', { class: 'wrapped-template-actions' }, templateName, saveTemplateButton, deleteTemplateButton)
+      el('div', { class: 'wrapped-template-actions' }, templateName, saveTemplateButton, shareTemplateButton, deleteTemplateButton)
     );
     const editor = el(
       'section',
@@ -639,6 +642,7 @@ export default {
       }
       store.set(TEMPLATES_KEY, merged);
       refreshTemplateSelect();
+      if (sharedTemplate) applyTemplate(sharedTemplate);
     }
 
     const offSessionChange = onSessionChange((user) => {
@@ -865,6 +869,40 @@ export default {
       deleteRemoteTemplate(name);
       setStatus(cardStatus, 'Template "' + name + '" deleted.', 'info');
     });
+    shareTemplateButton.addEventListener('click', async () => {
+      const selected = templateSelect.value
+        ? readTemplates().find((item) => item.name === templateSelect.value)
+        : null;
+      const name = (selected && selected.name) || templateName.value.trim() || 'Shared template';
+      const template = selected || { name, options: currentOptions() };
+      let url;
+      try {
+        url = buildShareUrl(template, window.location.origin + window.location.pathname);
+      } catch (error) {
+        setStatus(cardStatus, error && error.message ? error.message : 'Could not build a share link.', 'error');
+        return;
+      }
+      const copied = await copyText(url);
+      setStatus(
+        cardStatus,
+        copied ? 'Share link for "' + template.name + '" copied to the clipboard.' : 'Could not copy the link. Check clipboard permissions and try again.',
+        copied ? 'info' : 'error'
+      );
+    });
+
+    // Shared-template import: `#/card?share=…` (fragment — never sent to the
+    // server). Apply it, prefill the name field, and let Save make it stick.
+    try {
+      const code = shareCodeFromHash(window.location.hash);
+      if (code) sharedTemplate = decodeTemplateShare(code);
+    } catch (error) {
+      setStatus(status, error && error.message ? error.message : 'That share link looks damaged.', 'error');
+    }
+    if (sharedTemplate) {
+      templateName.value = sharedTemplate.name.slice(0, 32);
+      applyTemplate(sharedTemplate);
+      setStatus(status, 'Shared template "' + sharedTemplate.name + '" applied. Open the studio to review, then Save to keep it.', 'info');
+    }
     updateUsernameField();
   },
 };

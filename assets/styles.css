@@ -1063,11 +1063,9 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
 .wrapped-section-controls .btn { min-height: 44px; padding-inline: var(--s2); }
 .wrapped-templates { display: grid; gap: var(--s2); }
 .wrapped-templates select { width: 100%; }
-.wrapped-template-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2); }
-.wrapped-template-actions input { min-width: 0; }
-.wrapped-template-actions .btn { grid-row: 2; }
-.wrapped-template-actions input { grid-column: 1 / -1; }
-.wrapped-template-actions .btn:last-child { grid-column: 2; }
+.wrapped-template-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--s2); }
+.wrapped-template-actions input { min-width: 0; grid-column: 1 / -1; }
+.wrapped-template-actions .btn { grid-row: 2; min-height: 44px; }
 
 /* The export card is a printed field note: flat fills, one hairline rule under
    the header, clipped corner in the sheet's voice. No borders, no shadows;
