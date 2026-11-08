@@ -1859,3 +1859,78 @@ html.wrapped-dialog-open { overflow: hidden; }
 
 .auth-link-panel { max-width: 560px; }
 .auth-link-form { display: grid; gap: var(--s3); max-width: 420px; }
+
+/* Guess history + streak calendar (Track B · B002) */
+.account-history-kpis { gap: 1px; }
+.account-calendar-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+.account-calendar-title {
+  margin: 0;
+  font-size: var(--fs-small);
+  font-weight: 600;
+  text-align: center;
+}
+.account-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--s1);
+  margin-top: var(--s3);
+}
+.account-calendar-weekday {
+  color: var(--faint);
+  font-size: var(--fs-micro);
+  text-align: center;
+}
+.account-calendar-cell {
+  display: grid;
+  place-items: center;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+}
+.account-calendar-cell.is-blank { border-color: transparent; background: transparent; }
+.account-calendar-cell.is-future { opacity: 0.45; }
+.account-calendar-cell.is-played { background: var(--pill-warning-bg); color: var(--pill-warning-ink); border-color: transparent; }
+.account-calendar-cell.is-won { background: var(--pill-positive-bg); color: var(--pill-positive-ink); border-color: transparent; font-weight: 600; }
+.account-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s2);
+  color: var(--muted);
+  font-size: var(--fs-micro);
+}
+.account-calendar-legend span { display: inline-flex; align-items: center; gap: var(--s1); }
+.account-calendar-legend span::before {
+  content: '';
+  width: 10px; height: 10px; border-radius: 3px; background: var(--surface); border: 1px solid var(--border);
+}
+.account-calendar-legend span:nth-child(1)::before { background: var(--pill-positive-bg); border-color: transparent; }
+.account-calendar-legend span:nth-child(2)::before { background: var(--pill-warning-bg); border-color: transparent; }
+.account-recent-title { margin-top: var(--s4); }
+.account-history-list { display: grid; gap: var(--s1); list-style: none; margin: 0; padding: 0; }
+.account-history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr) auto auto;
+  gap: var(--s2) var(--s3);
+  align-items: center;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: var(--fs-small);
+}
+.account-history-won { color: var(--pill-positive-ink); font-weight: 600; }
+.account-history-lost { color: var(--muted); }
+@media (max-width: 760px) {
+  .account-history-kpis { grid-auto-columns: minmax(0, 1fr); }
+  .account-history-row { grid-template-columns: minmax(0, 1fr) auto; }
+}

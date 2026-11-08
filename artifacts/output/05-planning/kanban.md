@@ -2,6 +2,7 @@
 
 **Updated:** 2026-11-08
 **Source:** `artifacts/output/05-planning/execution-plan.md` (scope lock: `[SCOPE_LOCKED: track-a-harden-then-b]`)
+**Track B spec:** `artifacts/output/05-planning/product-spec.md` (draft, local per AGENTS norms)
 
 Malformed board entries (if any) are kept as plain text. Columns: Backlog,
 To Do, In Progress, Review / QA, Done, Blocked.
@@ -13,7 +14,7 @@ To Do, In Progress, Review / QA, Done, Blocked.
 
 ## To Do
 
-- Write `product-spec.md` for Track B via `/shape-up` — the gate for all B-tasks
+- Spec B004 (template sharing) and B001 (profile/avatar) in detail — B002 shipped, spec drafted
 
 ## In Progress
 
@@ -31,11 +32,13 @@ To Do, In Progress, Review / QA, Done, Blocked.
 - [x] RUNBOOK.md rewritten as a plain-language step-by-step tutorial
 - [x] `npm audit` clean — 0 vulnerabilities (nodemailer override; maildev 2.2.1 pinned for local testing)
 - [x] Tests 15/15 green (`npm test`: 15 account + 2 MAL)
+- [x] Track B B002 — guess history + streak calendar on account page (`src/domain/streak.js`, `tests/streak.test.mjs` 10 tests; 25 total green)
+- [x] Track B product-spec draft (`product-spec.md`, OSS decisions recorded)
+- [x] Untracked planning docs per AGENTS norms: RUNBOOK.md, copy-deck.md, DESIGN.md (kept local, gitignored)
 
 ## Blocked
 
-- B001 Public profile page (avatar upload, bio, Wrapped gallery) — waiting on product-spec.md
-- B002 Guess history + streak calendar — waiting on product-spec.md
-- B003 OAuth (Google first, PKCE) — waiting on product-spec.md
-- B004 Template sharing (export/import link) — waiting on product-spec.md
-- B005 Weekly Wrapped digest email — waiting on product-spec.md (and a real SMTP provider)
+- B001 Public profile page (avatar upload, bio, Wrapped gallery) — needs spec detail + avatar storage decision (browser-resize, see product-spec)
+- B003 OAuth (Google first, PKCE) — needs `GOOGLE_*` env + provider account before live test
+- B004 Template sharing (export/import link) — needs spec detail (fragment encoding + size guard)
+- B005 Weekly Wrapped digest email — waiting on real SMTP provider + scheduler choice

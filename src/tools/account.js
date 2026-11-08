@@ -4,7 +4,7 @@
  * from the topbar account menu (#/account).
  */
 
-import { el, render, setStatus } from '../lib.js';
+import { el, render, setStatus, dayIndex } from '../lib.js';
 import {
   AuthError,
   changePassword,
@@ -14,11 +14,16 @@ import {
   listSessions,
   logout,
   onSessionChange,
+  pullGuessProgress,
   resendVerification,
   revokeAllSessions,
   revokeSession,
   requestPasswordReset,
 } from '../auth.js';
+import { resolveMediaType } from '../domain/media.js';
+import { buildMonthCalendar, dayIndexToDate, summarizeProgress } from '../domain/streak.js';
+
+const RECENT_LIMIT = 10;
 
 function describeDevice(userAgent) {
   const ua = String(userAgent || '');
@@ -114,6 +119,140 @@ export default {
         revokeAllButton
       );
 
+      // --- guess history + streak calendar (Track B · B002) ----------------
+      // Data comes from the already-synced guess_progress rows; no new table.
+      let guessRows = [];
+      let viewYear = new Date().getFullYear();
+      let viewMonth = new Date().getMonth();
+
+      const historyStats = el('div', { class: 'kpis account-history-kpis' });
+      const calendarTitle = el('h3', { class: 'account-calendar-title' });
+      const calendarPrev = el('button', { class: 'btn btn-quiet btn-sm', type: 'button', 'aria-label': 'Previous month' }, '←');
+      const calendarNext = el('button', { class: 'btn btn-quiet btn-sm', type: 'button', 'aria-label': 'Next month' }, '→');
+      const calendarGrid = el('div', { class: 'account-calendar-grid', role: 'grid', 'aria-label': 'Guess calendar' });
+      const calendarLegend = el(
+        'div',
+        { class: 'account-calendar-legend' },
+        el('span', {}, 'Won'),
+        el('span', {}, 'Played'),
+        el('span', {}, 'Not played')
+      );
+      const recentList = el('ul', { class: 'account-history-list' });
+      const historyEmpty = el('p', { class: 'account-danger-note' }, 'No synced results yet. Finish a daily round while signed in and it will appear here.');
+
+      const guessSection = el(
+        'section',
+        { class: 'panel account-panel' },
+        el('h2', { class: 'panel-title' }, 'Guess history'),
+        historyStats,
+        el(
+          'div',
+          { class: 'account-calendar-head' },
+          calendarPrev,
+          calendarTitle,
+          calendarNext
+        ),
+        calendarGrid,
+        calendarLegend,
+        el('h3', { class: 'panel-title account-recent-title' }, 'Recent results'),
+        recentList,
+        historyEmpty
+      );
+
+      function weekdayHeader() {
+        // Localized short weekday names for one known Sunday (2024-01-07).
+        const formatter = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
+        return Array.from({ length: 7 }, (_, i) => formatter.format(new Date(2024, 0, 7 + i)));
+      }
+
+      function renderCalendar() {
+        const todayIndex = dayIndex();
+        const month = buildMonthCalendar(viewYear, viewMonth, guessRows, { todayIndex });
+        calendarTitle.textContent = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(
+          new Date(viewYear, viewMonth, 1)
+        );
+        const cells = [];
+        for (const label of weekdayHeader()) {
+          cells.push(el('span', { class: 'account-calendar-weekday', 'aria-hidden': 'true' }, label));
+        }
+        for (let i = 0; i < month.firstWeekday; i += 1) {
+          cells.push(el('span', { class: 'account-calendar-cell is-blank', 'aria-hidden': 'true' }));
+        }
+        for (const day of month.days) {
+          const date = dayIndexToDate(day.dayIndex);
+          const detail = day.entries.length
+            ? day.entries
+                .map((e) => resolveMediaType(e.mediaType).label + (e.won ? ' won' : ' lost') + ', ' + Number(e.score || 0) + ' pts')
+                .join(' · ')
+            : day.state === 'future' ? 'Future' : 'Not played';
+          cells.push(
+            el(
+              'span',
+              {
+                class: 'account-calendar-cell' + (day.state === 'won' ? ' is-won' : '') + (day.state === 'played' ? ' is-played' : '') + (day.state === 'future' ? ' is-future' : ''),
+                title: date.toLocaleDateString() + ' — ' + detail,
+                'aria-label': date.toLocaleDateString() + ': ' + detail,
+                role: 'gridcell',
+              },
+              String(day.day)
+            )
+          );
+        }
+        render(calendarGrid, ...cells);
+        const now = new Date();
+        calendarNext.disabled = viewYear === now.getFullYear() && viewMonth >= now.getMonth();
+      }
+
+      async function refreshHistory() {
+        try {
+          guessRows = await pullGuessProgress();
+        } catch {
+          guessRows = [];
+        }
+        const summary = summarizeProgress(guessRows, { todayIndex: dayIndex() });
+        historyEmpty.hidden = summary.total > 0;
+        render(
+          historyStats,
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Played'), el('strong', { class: 'kpi-value num' }, String(summary.total))),
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Wins'), el('strong', { class: 'kpi-value num' }, String(summary.wins))),
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Win rate'), el('strong', { class: 'kpi-value num' }, String(summary.winRate) + '%')),
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Streak'), el('strong', { class: 'kpi-value num' }, String(summary.currentStreak))),
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Best'), el('strong', { class: 'kpi-value num' }, String(summary.bestStreak)))
+        );
+        renderCalendar();
+        render(
+          recentList,
+          ...summary.recent.slice(0, RECENT_LIMIT).map((row) => {
+            const date = dayIndexToDate(row.dayIndex);
+            return el(
+              'li',
+              { class: 'account-history-row' },
+              el('span', {}, date.toLocaleDateString()),
+              el('span', {}, resolveMediaType(row.mediaType).label),
+              el('span', { class: row.won ? 'account-history-won' : 'account-history-lost' }, row.won ? 'Won' : 'Lost'),
+              el('span', { class: 'num' }, String(Number(row.score || 0)) + ' pts')
+            );
+          })
+        );
+      }
+
+      calendarPrev.addEventListener('click', () => {
+        viewMonth -= 1;
+        if (viewMonth < 0) {
+          viewMonth = 11;
+          viewYear -= 1;
+        }
+        renderCalendar();
+      });
+      calendarNext.addEventListener('click', () => {
+        viewMonth += 1;
+        if (viewMonth > 11) {
+          viewMonth = 0;
+          viewYear += 1;
+        }
+        renderCalendar();
+      });
+
       // --- password + danger zone ----------------------------------------
       const currentPassword = el('input', { type: 'password', id: 'account-current', autocomplete: 'current-password', maxlength: '128' });
       const newPassword = el('input', { type: 'password', id: 'account-next', autocomplete: 'new-password', maxlength: '128' });
@@ -176,11 +315,13 @@ export default {
           logoutButton,
           status
         ),
-        sessionsSection
+        sessionsSection,
+        guessSection
       );
 
       render(root, heading, body);
       refreshSessions();
+      refreshHistory();
 
       sessionList.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-revoke]');
