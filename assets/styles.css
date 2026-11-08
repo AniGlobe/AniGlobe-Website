@@ -1858,6 +1858,45 @@ html.wrapped-dialog-open { overflow: hidden; }
 .auth-link-panel { max-width: 560px; }
 .auth-link-form { display: grid; gap: var(--s3); max-width: 420px; }
 
+/* Public profile + avatar (Track B · B001) */
+.account-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+.account-avatar-row input[type="file"] {
+  flex: 1 1 220px;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--s2) var(--s3);
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+.account-avatar {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+.account-avatar-lg { width: 72px; height: 72px; }
+.account-avatar[hidden] { display: none; }
+#account-bio { width: 100%; min-height: 88px; }
+.account-profile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+.account-profile-name { font-size: var(--fs-section); font-weight: 600; }
+.account-profile-bio {
+  margin-top: var(--s3);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
 /* Guess history + streak calendar (Track B · B002) */
 .account-history-kpis { gap: 1px; }
 .account-calendar-head {

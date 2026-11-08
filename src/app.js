@@ -11,6 +11,7 @@ import { el, render } from './lib.js';
 import { getSession, logout, onSessionChange, refreshSession } from './auth.js';
 import { createAuthDialog } from './tools/auth-dialog.js';
 import { renderReset, renderVerify } from './tools/auth-links.js';
+import { renderProfile } from './tools/profile-page.js';
 
 const dom = {
   topbarBrand: document.querySelector('.topbar-brand'),
@@ -193,6 +194,14 @@ async function mountRoute() {
     runCleanup();
     render(dom.app);
     renderReset(dom.app);
+    dom.app.focus({ preventScroll: true });
+    return;
+  }
+  if (rawPath.startsWith('/profile')) {
+    mountToken += 1;
+    runCleanup();
+    render(dom.app);
+    renderProfile(dom.app);
     dom.app.focus({ preventScroll: true });
     return;
   }

@@ -55,6 +55,8 @@ import {
   touchLogin,
   touchSession,
   updateUserPassword,
+  updateProfile,
+  guessSummary,
   upsertTemplate,
   useResetToken,
   useVerifyToken,
@@ -67,6 +69,9 @@ const SESSION_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
 const SESSION_LIFETIME_SECONDS = Math.floor(SESSION_LIFETIME_MS / 1000);
 const RESET_TOKEN_LIFETIME_MS = 60 * 60 * 1000;
 const VERIFY_TOKEN_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const BIO_MAX_CHARS = 280;
+const AVATAR_MAX_BYTES = 150 * 1024;
+const AVATAR_MIME_PATTERN = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 
 /** Structured security events (JSON to stderr). The database never logs secrets. */
 function logEvent(event, fields = {}) {
@@ -403,12 +408,76 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     res.setHeader('Content-Disposition', `attachment; filename="aniglobe-export-${user.username.toLowerCase()}.json"`);
     json(res, 200, {
       exportedAt: new Date().toISOString(),
-      user: publicUser(user),
+      user: { ...publicUser(user), bio: user.bio || null, hasAvatar: Boolean(user.avatar_data) },
       wrappedPrefs: prefs ? prefs.payload : null,
       templates: listTemplates(db, user.id),
       guessProgress: listGuessProgress(db, user.id),
       activeSessionCount: countActiveSessions(db, user.id),
     });
+  }
+
+  function ownProfile(user) {
+    return {
+      ...publicUser(user),
+      bio: user.bio || null,
+      avatar: user.avatar_data || null,
+    };
+  }
+
+  async function getOwnProfile(req, res) {
+    const { user } = requireSession(db, req);
+    json(res, 200, { profile: ownProfile(user) });
+  }
+
+  async function updateOwnProfile(req, res) {
+    requireCsrf(req);
+    const { user } = requireSession(db, req);
+    const body = await readJsonBody(req);
+    const bio = body.bio == null ? null : String(body.bio).trim();
+    if (bio !== null && bio.length > BIO_MAX_CHARS) {
+      throw new HttpError(400, 'Bios can be at most 280 characters.', { field: 'bio' });
+    }
+    let avatarData = user.avatar_data || null;
+    if (body.avatar === null || body.avatar === undefined) {
+      // explicit null clears the avatar; omitted means keep it — but the
+      // client always sends `avatar` (data URL or null) so omitted == keep.
+      if (body.avatar === null) avatarData = null;
+    } else {
+      avatarData = String(body.avatar);
+      if (!AVATAR_MIME_PATTERN.test(avatarData)) {
+        throw new HttpError(400, 'Avatar must be a JPEG, PNG, or WebP image.', { field: 'avatar' });
+      }
+      const base64 = avatarData.slice(avatarData.indexOf(',') + 1);
+      if (Buffer.from(base64, 'base64').length > AVATAR_MAX_BYTES) {
+        throw new HttpError(413, 'Avatar image is too large. Use an image under 150 KB after resizing.', { field: 'avatar' });
+      }
+    }
+    updateProfile(db, user.id, { bio: bio || null, avatarData });
+    const next = getUserById(db, user.id);
+    json(res, 200, { profile: ownProfile(next) });
+  }
+
+  function publicProfile(user) {
+    const summary = guessSummary(db, user.id);
+    const total = summary.total;
+    return {
+      username: user.username,
+      createdAt: user.created_at,
+      verified: Boolean(user.email_verified_at),
+      bio: user.bio || null,
+      avatar: user.avatar_data || null,
+      stats: {
+        gamesPlayed: total,
+        wins: summary.wins,
+        winRate: total ? Math.round((summary.wins / total) * 100) : 0,
+      },
+    };
+  }
+
+  async function handlePublicProfile(req, res, username) {
+    const user = getUserByUsername(db, username);
+    if (!user) throw new HttpError(404, 'That profile does not exist.');
+    json(res, 200, { profile: publicProfile(user) });
   }
 
   function shapePrefs(payload) {
@@ -495,6 +564,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     ['/api/auth/sessions', { GET: listSessions }],
     ['/api/auth/sessions/revoke-all', { POST: revokeAllSessions }],
     ['/api/auth/export', { GET: dataExport }],
+    ['/api/auth/profile', { GET: getOwnProfile, PUT: updateOwnProfile }],
     ['/api/sync/wrapped-prefs', { GET: wrappedPrefs, POST: wrappedPrefs }],
     ['/api/sync/guess', { GET: guess, POST: guess }],
   ]);
@@ -521,6 +591,14 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
         return;
       }
       throw new HttpError(404, 'Unknown endpoint.');
+    }
+
+    if (pathname.startsWith('/api/profile/')) {
+      if (req.method !== 'GET') throw new HttpError(405, 'That method is not supported here.');
+      const username = decodeURIComponent(pathname.slice('/api/profile/'.length));
+      if (!username || username.includes('/')) throw new HttpError(404, 'That profile does not exist.');
+      await handlePublicProfile(req, res, username);
+      return;
     }
 
     const entry = routes.get(pathname);

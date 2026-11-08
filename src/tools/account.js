@@ -10,6 +10,7 @@ import {
   changePassword,
   deleteAccount,
   exportData,
+  getProfile,
   getSession,
   listSessions,
   logout,
@@ -19,11 +20,35 @@ import {
   revokeAllSessions,
   revokeSession,
   requestPasswordReset,
+  updateProfile,
 } from '../auth.js';
 import { resolveMediaType } from '../domain/media.js';
 import { buildMonthCalendar, dayIndexToDate, summarizeProgress } from '../domain/streak.js';
 
 const RECENT_LIMIT = 10;
+const BIO_MAX_CHARS = 280; // mirrors server/api.js BIO_MAX_CHARS
+const AVATAR_MAX_DIM = 256; // longest side, px — keeps the blob under the server cap
+
+function resizeImageToDataUrl(file, maxDim) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(image.width, image.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read that image.'));
+    };
+    image.src = url;
+  });
+}
 
 function describeDevice(userAgent) {
   const ua = String(userAgent || '');
@@ -158,6 +183,100 @@ export default {
         recentList,
         historyEmpty
       );
+
+      // --- public profile: bio + avatar (Track B · B001) -------------------
+      const avatarPreview = el('img', { class: 'account-avatar', alt: 'Your avatar', hidden: true });
+      const bioInput = el('textarea', { id: 'account-bio', maxlength: String(BIO_MAX_CHARS), rows: '3', placeholder: 'A short bio…' });
+      const avatarFile = el('input', { type: 'file', id: 'account-avatar-file', accept: 'image/jpeg,image/png,image/webp' });
+      const avatarStatus = el('p', { class: 'account-danger-note' });
+      const removeAvatarButton = el('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, 'Remove avatar');
+      const profileSaveButton = el('button', { class: 'btn btn-primary', type: 'submit' }, 'Save profile');
+      const profileForm = el(
+        'form',
+        { class: 'account-form' },
+        el(
+          'div',
+          { class: 'account-avatar-row' },
+          avatarPreview,
+          avatarFile
+        ),
+        avatarStatus,
+        el('div', { class: 'field' }, el('label', { for: 'account-bio' }, 'Bio'), bioInput),
+        profileSaveButton,
+        removeAvatarButton
+      );
+      const profileSection = el(
+        'section',
+        { class: 'panel account-panel' },
+        el('h2', { class: 'panel-title' }, 'Public profile'),
+        el(
+          'p',
+          { class: 'account-danger-note' },
+          'Your bio and avatar show on your public page. Email and sign-in details never do.'
+        ),
+        profileForm
+      );
+      let pendingAvatar = undefined; // undefined = keep, null = remove, string = new data URL
+
+      async function refreshProfile() {
+        let profile = null;
+        try {
+          profile = await getProfile();
+        } catch {
+          profile = null;
+        }
+        bioInput.value = (profile && profile.bio) || '';
+        pendingAvatar = undefined;
+        if (profile && profile.avatar) {
+          avatarPreview.src = profile.avatar;
+          avatarPreview.hidden = false;
+        } else {
+          avatarPreview.removeAttribute('src');
+          avatarPreview.hidden = true;
+        }
+        removeAvatarButton.hidden = !(profile && profile.avatar);
+      }
+
+      avatarFile.addEventListener('change', async () => {
+        if (!avatarFile.files || !avatarFile.files[0]) return;
+        avatarStatus.textContent = 'Resizing image…';
+        try {
+          pendingAvatar = await resizeImageToDataUrl(avatarFile.files[0], AVATAR_MAX_DIM);
+          avatarPreview.src = pendingAvatar;
+          avatarPreview.hidden = false;
+          avatarStatus.textContent = 'New avatar ready. Save profile to publish it.';
+        } catch {
+          avatarStatus.textContent = 'Could not read that image. Try a JPEG, PNG, or WebP file.';
+        }
+      });
+      removeAvatarButton.addEventListener('click', () => {
+        pendingAvatar = null;
+        avatarPreview.hidden = true;
+        avatarPreview.removeAttribute('src');
+        avatarStatus.textContent = 'Avatar will be removed on save.';
+      });
+      profileForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        try {
+          const next = await updateProfile({
+            bio: bioInput.value.trim() || null,
+            avatar: pendingAvatar === undefined ? undefined : pendingAvatar,
+          });
+          bioInput.value = (next && next.bio) || '';
+          pendingAvatar = undefined;
+          if (next && next.avatar) {
+            avatarPreview.src = next.avatar;
+            avatarPreview.hidden = false;
+          } else {
+            avatarPreview.hidden = true;
+          }
+          removeAvatarButton.hidden = !(next && next.avatar);
+          avatarStatus.textContent = 'Profile saved.';
+          setStatus(status, 'Profile saved.', 'info');
+        } catch (error) {
+          setStatus(status, error instanceof AuthError ? error.message : 'Could not save your profile.', 'error');
+        }
+      });
 
       function weekdayHeader() {
         // Localized short weekday names for one known Sunday (2024-01-07).
@@ -315,6 +434,7 @@ export default {
           logoutButton,
           status
         ),
+        profileSection,
         sessionsSection,
         guessSection
       );
@@ -322,6 +442,7 @@ export default {
       render(root, heading, body);
       refreshSessions();
       refreshHistory();
+      refreshProfile();
 
       sessionList.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-revoke]');

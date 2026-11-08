@@ -83,6 +83,7 @@ function makeClient(base) {
   return {
     get: (path) => request('GET', path),
     post: (path, body) => request('POST', path, body),
+    put: (path, body) => request('PUT', path, body),
     del: (path, body) => request('DELETE', path, body),
     delNoCsrf: (path, body) => {
       const saved = cookies.get('aniglobe_csrf');
@@ -454,6 +455,52 @@ test('data export bundles the account record and synced data', async () => {
 
     const anonymous = makeClient(base);
     assert.equal((await anonymous.get('/api/auth/export')).status, 401);
+  } finally {
+    await close();
+  }
+});
+
+test('profile: own bio/avatar save, public read never leaks email', async () => {
+  const { base, close } = await startTestServer();
+  try {
+    const client = makeClient(base);
+    await client.post('/api/auth/register', {
+      username: 'Prof',
+      email: 'prof@example.com',
+      password: GOOD_PASSWORD,
+    });
+    await client.post('/api/sync/guess', { mediaType: 'anime', dayIndex: 20901, score: 500, won: true });
+
+    const avatar = 'data:image/jpeg;base64,' + Buffer.from([0xff, 0xd8, 0xff, 0x01]).toString('base64');
+    const saved = await client.put('/api/auth/profile', { bio: 'hello there', avatar });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.json.profile.bio, 'hello there');
+    assert.equal(saved.json.profile.avatar, avatar);
+
+    const own = await client.get('/api/auth/profile');
+    assert.equal(own.status, 200);
+    assert.equal(own.json.profile.email, 'prof@example.com');
+
+    const pub = await makeClient(base).get('/api/profile/Prof');
+    assert.equal(pub.status, 200);
+    assert.equal(pub.json.profile.username, 'Prof');
+    assert.equal(pub.json.profile.bio, 'hello there');
+    assert.equal(pub.json.profile.avatar, avatar);
+    assert.equal(pub.json.profile.stats.gamesPlayed, 1);
+    assert.equal(pub.json.profile.stats.wins, 1);
+    assert.equal('email' in pub.json.profile, false, 'public profile must not leak email');
+
+    assert.equal((await makeClient(base).get('/api/profile/nobody')).status, 404);
+    assert.equal((await makeClient(base).get('/api/auth/profile')).status, 401);
+
+    const tooLong = await client.put('/api/auth/profile', { bio: 'x'.repeat(281), avatar: undefined });
+    assert.equal(tooLong.status, 400);
+    const badMime = await client.put('/api/auth/profile', { bio: null, avatar: 'data:text/plain;base64,AAAA' });
+    assert.equal(badMime.status, 400);
+
+    const cleared = await client.put('/api/auth/profile', { bio: null, avatar: null });
+    assert.equal(cleared.status, 200);
+    assert.equal(cleared.json.profile.avatar, null);
   } finally {
     await close();
   }

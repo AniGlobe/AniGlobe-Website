@@ -119,6 +119,12 @@ const MIGRATIONS = [
       );
     `);
   },
+  (db) => {
+    db.exec(`
+      ALTER TABLE users ADD COLUMN bio TEXT;
+      ALTER TABLE users ADD COLUMN avatar_data TEXT;
+    `);
+  },
 ];
 
 function nowIso() {
@@ -191,6 +197,20 @@ export function getUserByEmail(db, email) {
 export function updateUserPassword(db, id, passwordHash) {
   db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?')
     .run(passwordHash, nowIso(), id);
+}
+
+export function updateProfile(db, id, { bio, avatarData }) {
+  db.prepare('UPDATE users SET bio = ?, avatar_data = ?, updated_at = ? WHERE id = ?')
+    .run(bio, avatarData, nowIso(), id);
+}
+
+export function guessSummary(db, userId) {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS total,
+           SUM(CASE WHEN won = 1 THEN 1 ELSE 0 END) AS wins
+    FROM guess_progress WHERE user_id = ?
+  `).get(userId);
+  return { total: Number(row.total || 0), wins: Number(row.wins || 0) };
 }
 
 export function touchLogin(db, id) {

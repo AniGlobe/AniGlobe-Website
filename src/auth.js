@@ -119,6 +119,28 @@ export async function deleteAccount(password) {
   setSession(null);
 }
 
+export async function getProfile() {
+  if (!getSession()) return null;
+  const { status, json } = await request('/api/auth/profile');
+  return status === 200 && json && json.profile ? json.profile : null;
+}
+
+export async function updateProfile({ bio, avatar }) {
+  const { status, json } = await request('/api/auth/profile', {
+    method: 'PUT',
+    body: { bio, avatar },
+  });
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not save your profile.', json && json.details);
+  return json.profile;
+}
+
+export async function getPublicProfile(username) {
+  const { status, json } = await request('/api/profile/' + encodeURIComponent(username));
+  if (status === 404) return null;
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not load that profile.', json && json.details);
+  return json.profile;
+}
+
 export async function requestPasswordReset(email) {
   const { status, json } = await request('/api/auth/password-reset/request', {
     method: 'POST',
