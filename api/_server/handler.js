@@ -13,11 +13,30 @@
 import { json, HttpError, sendHttpError } from './http.js';
 import { securityHeaders } from './headers.js';
 
+export function effectivePathname(req) {
+  // On Vercel the request reaches the function through a rewrite, so the
+  // request URL may be the rewritten destination rather than the original
+  // path. The platform passes the original path in x-matched-path; prefer it
+  // whenever it looks like an API path. Locally (dev.js) req.url is already
+  // the original and the header is absent, so this is a no-op there.
+  const matched = req.headers && req.headers['x-matched-path'];
+  if (typeof matched === 'string' && matched.startsWith('/api/')) {
+    return matched.split('?')[0];
+  }
+  const url = new URL(req.url, 'http://placeholder');
+  return url.pathname;
+}
+
 export function createRequestHandler({ db, api }) {
   return async function requestHandler(req, res) {
     try {
+      const pathname = effectivePathname(req);
+      // Normalize req.url so downstream route matching (and query parsing in
+      // handlers) sees the original API path even after a platform rewrite.
       const url = new URL(req.url, 'http://placeholder');
-      const pathname = url.pathname;
+      if (url.pathname !== pathname) {
+        req.url = pathname + url.search;
+      }
 
       for (const [key, value] of Object.entries(securityHeaders())) res.setHeader(key, value);
 

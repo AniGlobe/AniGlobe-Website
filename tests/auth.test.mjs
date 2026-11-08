@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { openDatabase } from '../api/server/db.js';
-import { createApiRouter } from '../api/server/api.js';
-import { sha256Hex } from '../api/server/http.js';
-import { hashPassword, verifyPassword } from '../api/server/passwords.js';
+import { openDatabase } from '../api/_server/db.js';
+import { createApiRouter } from '../api/_server/api.js';
+import { sha256Hex } from '../api/_server/http.js';
+import { hashPassword, verifyPassword } from '../api/_server/passwords.js';
 
 /**
  * Start one ephemeral server per file with an in-memory database and return

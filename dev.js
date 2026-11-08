@@ -13,12 +13,12 @@
 
 import { createServer } from 'node:http';
 
-import { openDatabase } from './api/server/db.js';
-import { createDbRateLimiter } from './api/server/ratelimit.js';
-import { createApiRouter } from './api/server/api.js';
-import { createRequestHandler } from './api/server/handler.js';
-import { serveStatic } from './api/server/static.js';
-import { HttpError } from './api/server/http.js';
+import { openDatabase } from './api/_server/db.js';
+import { createDbRateLimiter } from './api/_server/ratelimit.js';
+import { createApiRouter } from './api/_server/api.js';
+import { createRequestHandler } from './api/_server/handler.js';
+import { serveStatic } from './api/_server/static.js';
+import { HttpError } from './api/_server/http.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';

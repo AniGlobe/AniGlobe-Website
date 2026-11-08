@@ -1,16 +1,16 @@
 /**
- * Vercel serverless entry point (catch-all for /api/*).
+ * Vercel serverless entry point for /api/*.
  *
  * Builds the request handler once per instance: async Turso (or local file)
- * database via api/server/db.js, the account API router, and the shared
- * handler. Static files are served by Vercel from the project root, so this
- * function only ever sees /api/* requests (see vercel.json).
+ * database via api/_server/db.js, the account API router, and the shared
+ * handler. Static files are served by Vercel from the project root; every
+ * /api/* request is rewritten here by vercel.json.
  */
 
-import { openDatabase } from './server/db.js';
-import { createDbRateLimiter } from './server/ratelimit.js';
-import { createApiRouter } from './server/api.js';
-import { createRequestHandler } from './server/handler.js';
+import { openDatabase } from './_server/db.js';
+import { createDbRateLimiter } from './_server/ratelimit.js';
+import { createApiRouter } from './_server/api.js';
+import { createRequestHandler } from './_server/handler.js';
 
 let handlerPromise = null;
 
