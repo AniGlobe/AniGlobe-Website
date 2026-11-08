@@ -33,11 +33,20 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
-// Each migration is an array of single statements (libsql runs one statement
-// per execute call; the array runs as one atomic write batch).
+// Each migration is an async function returning single statements (libsql
+// runs one statement per execute call; the array runs as one atomic write
+// batch). Every statement is idempotent — IF NOT EXISTS for creates, and
+// column checks before ALTER — because on serverless, several instances can
+// cold-start at the same time and race the same migrations. Idempotent DDL
+// makes the race harmless: both instances converge on the same schema.
+async function hasColumn(db, table, column) {
+  const rows = (await db.execute(`PRAGMA table_info(${table})`)).rows;
+  return rows.some((row) => row.name === column);
+}
+
 const MIGRATIONS = [
-  [
-    `CREATE TABLE users (
+  async () => [
+    `CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL COLLATE NOCASE,
       email TEXT NOT NULL COLLATE NOCASE,
@@ -46,9 +55,9 @@ const MIGRATIONS = [
       updated_at TEXT NOT NULL,
       last_login_at TEXT
     )`,
-    'CREATE UNIQUE INDEX users_username_unique ON users (username)',
-    'CREATE UNIQUE INDEX users_email_unique ON users (email)',
-    `CREATE TABLE sessions (
+    'CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON users (username)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email)',
+    `CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
       token_hash TEXT NOT NULL UNIQUE,
@@ -57,16 +66,16 @@ const MIGRATIONS = [
       user_agent TEXT,
       ip TEXT
     )`,
-    'CREATE INDEX sessions_user_idx ON sessions (user_id)',
-    'CREATE INDEX sessions_expires_idx ON sessions (expires_at)',
+    'CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id)',
+    'CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions (expires_at)',
   ],
-  [
-    `CREATE TABLE wrapped_prefs (
+  async () => [
+    `CREATE TABLE IF NOT EXISTS wrapped_prefs (
       user_id INTEGER PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
       payload TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`,
-    `CREATE TABLE templates (
+    `CREATE TABLE IF NOT EXISTS templates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
       name TEXT NOT NULL,
@@ -74,10 +83,10 @@ const MIGRATIONS = [
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`,
-    'CREATE UNIQUE INDEX templates_user_name_unique ON templates (user_id, name COLLATE NOCASE)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS templates_user_name_unique ON templates (user_id, name COLLATE NOCASE)',
   ],
-  [
-    `CREATE TABLE guess_progress (
+  async () => [
+    `CREATE TABLE IF NOT EXISTS guess_progress (
       user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
       media_type TEXT NOT NULL CHECK (media_type IN ('anime', 'manga')),
       day_index INTEGER NOT NULL,
@@ -87,42 +96,58 @@ const MIGRATIONS = [
       PRIMARY KEY (user_id, media_type, day_index)
     )`,
   ],
-  [
-    `CREATE TABLE rate_limits (
+  async () => [
+    `CREATE TABLE IF NOT EXISTS rate_limits (
       key TEXT PRIMARY KEY,
       count INTEGER NOT NULL,
       reset_at INTEGER NOT NULL
     )`,
   ],
-  [
-    'ALTER TABLE sessions ADD COLUMN last_seen_at TEXT',
-    'CREATE INDEX sessions_last_seen_idx ON sessions (last_seen_at)',
-    'ALTER TABLE users ADD COLUMN email_verified_at TEXT',
-    `CREATE TABLE password_reset_tokens (
+  async (db) => {
+    const statements = [];
+    if (!(await hasColumn(db, 'sessions', 'last_seen_at'))) {
+      statements.push('ALTER TABLE sessions ADD COLUMN last_seen_at TEXT');
+    }
+    statements.push('CREATE INDEX IF NOT EXISTS sessions_last_seen_idx ON sessions (last_seen_at)');
+    if (!(await hasColumn(db, 'users', 'email_verified_at'))) {
+      statements.push('ALTER TABLE users ADD COLUMN email_verified_at TEXT');
+    }
+    statements.push(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
       token_hash TEXT NOT NULL UNIQUE,
       created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL,
       used_at TEXT
-    )`,
-    `CREATE TABLE email_verification_tokens (
+    )`);
+    statements.push(`CREATE TABLE IF NOT EXISTS email_verification_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
       token_hash TEXT NOT NULL UNIQUE,
       created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL,
       used_at TEXT
-    )`,
-  ],
-  [
-    'ALTER TABLE users ADD COLUMN bio TEXT',
-    'ALTER TABLE users ADD COLUMN avatar_data TEXT',
-  ],
-  [
-    `ALTER TABLE templates ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0`,
-    'CREATE INDEX templates_public_idx ON templates (is_public, updated_at DESC)',
-  ],
+    )`);
+    return statements;
+  },
+  async (db) => {
+    const statements = [];
+    if (!(await hasColumn(db, 'users', 'bio'))) {
+      statements.push('ALTER TABLE users ADD COLUMN bio TEXT');
+    }
+    if (!(await hasColumn(db, 'users', 'avatar_data'))) {
+      statements.push('ALTER TABLE users ADD COLUMN avatar_data TEXT');
+    }
+    return statements;
+  },
+  async (db) => {
+    const statements = [];
+    if (!(await hasColumn(db, 'templates', 'is_public'))) {
+      statements.push('ALTER TABLE templates ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0');
+    }
+    statements.push('CREATE INDEX IF NOT EXISTS templates_public_idx ON templates (is_public, updated_at DESC)');
+    return statements;
+  },
 ];
 
 function nowIso() {
@@ -160,11 +185,24 @@ export async function openDatabase(url = process.env.DATABASE_URL || `file:${roo
   const maxRow = (await db.execute('SELECT MAX(id) AS n FROM schema_migrations')).rows[0];
   const applied = Number(maxRow && maxRow.n ? maxRow.n : 0);
   for (let i = applied; i < MIGRATIONS.length; i += 1) {
-    const statements = MIGRATIONS[i];
-    await db.batch(
-      [...statements, { sql: 'INSERT INTO schema_migrations (applied_at) VALUES (?)', args: [nowIso()] }],
-      'write'
-    );
+    // Idempotent per-statement DDL: concurrent cold starts may apply the
+    // same migration at the same time — both converge on the same schema.
+    // A duplicated schema_migrations row is harmless (MAX(id) just advances
+    // past the loop bound, which then no-ops).
+    //
+    // The one remaining window is the hasColumn check-then-act race on
+    // ALTER: the loser of that race gets a duplicate-column error AFTER the
+    // winner committed. Retry once with freshly derived statements — the
+    // re-check now sees the winner's column and skips the ALTER, and the
+    // IF NOT EXISTS creates no-op. That is deterministic, not luck.
+    const marker = { sql: 'INSERT INTO schema_migrations (applied_at) VALUES (?)', args: [nowIso()] };
+    try {
+      const statements = await MIGRATIONS[i](db);
+      await db.batch([...statements, marker], 'write');
+    } catch (error) {
+      const statements = await MIGRATIONS[i](db);
+      await db.batch([...statements, marker], 'write');
+    }
   }
 
   return db;
