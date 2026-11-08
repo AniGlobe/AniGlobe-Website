@@ -68,12 +68,12 @@ export default {
       const status = el('div', { class: 'status', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' });
 
       // --- email verification state -------------------------------------
-      const verifiedAt = session.user.verifiedAt || null;
-      const verifiedBadge = verifiedAt
+      const verified = Boolean(session.user.verified);
+      const verifiedBadge = verified
         ? el('span', { class: 'account-verified' }, 'Verified')
         : el('span', { class: 'account-unverified' }, 'Not verified');
       const resendButton = el('button', { class: 'btn btn-outline btn-sm', type: 'button' }, 'Resend confirmation email');
-      resendButton.hidden = Boolean(verifiedAt);
+      resendButton.hidden = verified;
 
       // --- sessions -------------------------------------------------------
       const sessionList = el('ul', { class: 'account-sessions' }, el('li', { class: 'account-session' }, 'Loading devices…'));

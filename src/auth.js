@@ -170,18 +170,20 @@ export async function revokeAllSessions() {
 }
 
 export async function exportData() {
-  if (!getSession()) throw new AuthError('You need to log in first.');
+  const session = getSession();
+  if (!session) throw new AuthError('You need to log in first.');
   const csrf = readCsrf();
   const headers = {};
   if (csrf) headers['x-csrf-token'] = csrf;
   const response = await fetch('/api/auth/export', { headers, credentials: 'same-origin' });
   const json = await response.json().catch(() => null);
   if (response.status >= 400) throw new AuthError((json && json.error) || 'Could not export your data.', json && json.details);
+  const username = String((session.user && session.user.username) || 'account').toLowerCase().replace(/[^a-z0-9._-]/g, '-');
   const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'aniglobe-export.json';
+  link.download = `aniglobe-export-${username}.json`;
   document.body.append(link);
   link.click();
   link.remove();

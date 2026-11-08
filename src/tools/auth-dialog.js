@@ -80,6 +80,7 @@ export function createAuthDialog() {
       submit
     );
     setStatus(status, '', 'info');
+    for (const input of dialog.querySelectorAll('input')) input.removeAttribute('aria-invalid');
   }
 
   function fieldErrors(details) {

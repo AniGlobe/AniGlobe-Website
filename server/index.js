@@ -14,7 +14,7 @@
 
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -108,8 +108,13 @@ function serveStatic(req, res, pathname) {
     sendHttpError(res, new HttpError(404, 'Not found.'));
     return;
   }
-  const resolved = resolve(join(rootDir, normalize(urlPath)));
-  if (!resolved.startsWith(resolve(rootDir) + '\\') && resolved !== resolve(join(rootDir, 'index.html'))) {
+  const rootResolved = resolve(rootDir);
+  const resolved = resolve(join(rootResolved, normalize(urlPath)));
+  if (
+    resolved !== rootResolved &&
+    !resolved.startsWith(rootResolved + sep) &&
+    resolved !== resolve(join(rootResolved, 'index.html'))
+  ) {
     sendHttpError(res, new HttpError(403, 'Outside the site root.'));
     return;
   }

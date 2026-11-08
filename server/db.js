@@ -143,7 +143,8 @@ export function openDatabase(filename = process.env.DATABASE_URL || `${rootDir}/
     );
   `);
 
-  const applied = db.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n;
+  const maxRow = db.prepare('SELECT MAX(id) AS n FROM schema_migrations').get();
+  const applied = Number(maxRow && maxRow.n ? maxRow.n : 0);
   for (let i = applied; i < MIGRATIONS.length; i += 1) {
     const migrate = MIGRATIONS[i];
     try {
@@ -201,6 +202,8 @@ export function deleteUser(db, id) {
   db.prepare('DELETE FROM templates WHERE user_id = ?').run(id);
   db.prepare('DELETE FROM guess_progress WHERE user_id = ?').run(id);
   db.prepare('DELETE FROM wrapped_prefs WHERE user_id = ?').run(id);
+  db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(id);
+  db.prepare('DELETE FROM email_verification_tokens WHERE user_id = ?').run(id);
   db.prepare('DELETE FROM users WHERE id = ?').run(id);
 }
 
@@ -222,15 +225,22 @@ export function createSession(db, { userId, tokenHash, expiresAt, userAgent = nu
 
 export function getSessionByTokenHash(db, tokenHash) {
   const row = db.prepare('SELECT * FROM sessions WHERE token_hash = ?').get(tokenHash) || null;
-  if (row && row.expires_at < nowIso()) return null;
+  if (row && row.expires_at < nowIso()) {
+    db.prepare('DELETE FROM sessions WHERE id = ?').run(row.id);
+    return null;
+  }
   return row;
 }
 
 /** Idle timeout: sessions unused for longer than idleMs are dead, even if the
-   absolute expiry is still in the future. */
+   absolute expiry is still in the future. Legacy rows from before the
+   last_seen_at migration fall back to created_at so they still expire. */
 export function isSessionIdle(db, session, idleMs, now = Date.now()) {
-  if (!session.last_seen_at) return false;
-  return Date.parse(session.last_seen_at) + idleMs < now;
+  const stamp = session.last_seen_at || session.created_at;
+  if (!stamp) return false;
+  const ts = Date.parse(stamp);
+  if (Number.isNaN(ts)) return false;
+  return ts + idleMs < now;
 }
 
 export function touchSession(db, id, at = nowIso()) {
@@ -249,17 +259,23 @@ export function pruneExpiredSessions(db) {
   db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(nowIso());
 }
 
-export function countActiveSessions(db, userId) {
-  return db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND expires_at > ?')
-    .get(userId, nowIso()).n;
+export function countActiveSessions(db, userId, idleMs = 7 * 24 * 60 * 60 * 1000, now = Date.now()) {
+  const cutoff = new Date(now - idleMs).toISOString();
+  return db.prepare(`
+    SELECT COUNT(*) AS n FROM sessions
+    WHERE user_id = ? AND expires_at > ?
+      AND COALESCE(last_seen_at, created_at) > ?
+  `).get(userId, nowIso(), cutoff).n;
 }
 
-export function listSessionsForUser(db, userId) {
+export function listSessionsForUser(db, userId, idleMs = 7 * 24 * 60 * 60 * 1000, now = Date.now()) {
+  const cutoff = new Date(now - idleMs).toISOString();
   return db.prepare(`
     SELECT id, created_at, expires_at, last_seen_at, user_agent, ip
     FROM sessions WHERE user_id = ? AND expires_at > ?
+      AND COALESCE(last_seen_at, created_at) > ?
     ORDER BY created_at DESC
-  `).all(userId, nowIso());
+  `).all(userId, nowIso(), cutoff);
 }
 
 export function getSessionById(db, id) {

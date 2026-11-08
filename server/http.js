@@ -31,18 +31,26 @@ export function readJsonBody(req, { limitBytes = 256 * 1024 } = {}) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
     req.on('data', (chunk) => {
+      if (settled) return;
       size += chunk.length;
       if (size > limitBytes) {
-        reject(new HttpError(413, 'Request body is too large.'));
-        req.destroy();
+        fail(new HttpError(413, 'Request body is too large.'));
         return;
       }
       chunks.push(chunk);
     });
     req.on('end', () => {
+      if (settled) return;
       const raw = Buffer.concat(chunks).toString('utf8');
       if (!raw.trim()) {
+        settled = true;
         resolve({});
         return;
       }
@@ -50,16 +58,17 @@ export function readJsonBody(req, { limitBytes = 256 * 1024 } = {}) {
       try {
         parsed = JSON.parse(raw);
       } catch {
-        reject(new HttpError(400, 'Request body must be valid JSON.'));
+        fail(new HttpError(400, 'Request body must be valid JSON.'));
         return;
       }
       if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        reject(new HttpError(400, 'Request body must be a JSON object.'));
+        fail(new HttpError(400, 'Request body must be a JSON object.'));
         return;
       }
+      settled = true;
       resolve(parsed);
     });
-    req.on('error', (error) => reject(error instanceof HttpError ? error : new HttpError(400, 'Request body could not be read.')));
+    req.on('error', (error) => fail(error instanceof HttpError ? error : new HttpError(400, 'Request body could not be read.')));
   });
 }
 
@@ -99,6 +108,18 @@ export function clearSessionCookie({ secure = false } = {}) {
     `${COOKIE_NAME}=`,
     'Path=/',
     'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=0',
+    'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+  ];
+  if (secure) parts.push('Secure');
+  return parts.join('; ');
+}
+
+export function clearCsrfCookie({ secure = false } = {}) {
+  const parts = [
+    `${CSRF_COOKIE}=`,
+    'Path=/',
     'SameSite=Lax',
     'Max-Age=0',
     'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
@@ -165,10 +186,19 @@ export function sendHttpError(res, error) {
   json(res, 500, { error: 'Something went wrong on our side. Try again in a moment.' });
 }
 
+export function trustProxy() {
+  const v = process.env.TRUST_PROXY;
+  return v === '1' || v === 'true';
+}
+
 export function clientIp(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.length > 0) {
-    return forwarded.split(',')[0].trim();
+  // Only trust X-Forwarded-For when a trusted reverse proxy is in front.
+  // Otherwise a client can spoof XFF to bypass rate limits.
+  if (trustProxy()) {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.length > 0) {
+      return forwarded.split(',')[0].trim();
+    }
   }
   return req.socket ? req.socket.remoteAddress || 'unknown' : 'unknown';
 }

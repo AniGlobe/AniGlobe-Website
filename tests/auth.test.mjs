@@ -275,11 +275,10 @@ test('guess sync rejects anonymous clients and malformed entries', async () => {
     const badMedia = await client.post('/api/sync/guess', {
       mediaType: 'books', dayIndex: 20901, score: 440, won: true,
     });
-    assert.equal(badMedia.status, 200, 'unknown media normalizes to anime rather than erroring');
+    assert.equal(badMedia.status, 400, 'unknown media is rejected rather than silently stored as anime');
 
     const after = await client.get('/api/sync/guess?media=anime');
-    assert.equal(after.json.progress.length, 1);
-    assert.equal(after.json.progress[0].mediaType, 'anime');
+    assert.equal(after.json.progress.length, 0, 'rejected entry did not land as anime');
   } finally {
     await close();
   }

@@ -87,12 +87,18 @@ export function verifyEmailMail(to, verifyUrl) {
 }
 
 export function originOf(req) {
-  const forwardedProto = req.headers['x-forwarded-proto'];
+  // Only honour X-Forwarded-* when a trusted reverse proxy sets them.
+  // Otherwise an attacker can poison reset/verify links via Host poisoning.
+  const trusted = process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true';
+  const forwardedProto = trusted ? req.headers['x-forwarded-proto'] : undefined;
   const proto = (typeof forwardedProto === 'string' && forwardedProto.split(',')[0].trim())
     || (req.socket && req.socket.encrypted ? 'https' : 'http');
-  const forwardedHost = req.headers['x-forwarded-host'];
+  const forwardedHost = trusted ? req.headers['x-forwarded-host'] : undefined;
   const host = (typeof forwardedHost === 'string' && forwardedHost.split(',')[0].trim())
     || req.headers.host
     || 'localhost:8080';
-  return `${proto}://${host}`;
+  const safeProto = proto === 'https' ? 'https' : 'http';
+  // Strip any path/query smuggled via a spoofed Host header.
+  const safeHost = String(host).split('/')[0].split('?')[0].split('#')[0];
+  return `${safeProto}://${safeHost}`;
 }

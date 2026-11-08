@@ -166,17 +166,31 @@ function renderFailure(message) {
   );
 }
 
+function runCleanup() {
+  if (typeof cleanupCurrent === 'function') {
+    try {
+      cleanupCurrent();
+    } catch {
+      /* a broken cleanup must not block navigation */
+    }
+  }
+  cleanupCurrent = null;
+}
+
 async function mountRoute() {
   const rawHash = String(window.location.hash || '');
   const rawPath = rawHash.charAt(0) === '#' ? rawHash.slice(1) : rawHash;
-  const cleanPath = rawPath.split('?')[0];
   if (rawPath.startsWith('/verify')) {
+    mountToken += 1;
+    runCleanup();
     render(dom.app);
     renderVerify(dom.app);
     dom.app.focus({ preventScroll: true });
     return;
   }
   if (rawPath.startsWith('/reset')) {
+    mountToken += 1;
+    runCleanup();
     render(dom.app);
     renderReset(dom.app);
     dom.app.focus({ preventScroll: true });
@@ -189,14 +203,7 @@ async function mountRoute() {
 
   markActiveNav(entry.id);
 
-  if (typeof cleanupCurrent === 'function') {
-    try {
-      cleanupCurrent();
-    } catch {
-      /* a broken cleanup must not block navigation */
-    }
-  }
-  cleanupCurrent = null;
+  runCleanup();
 
   let mod;
   try {

@@ -10,6 +10,7 @@
 
 import {
   HttpError,
+  clearCsrfCookie,
   clearSessionCookie,
   csrfCookie,
   csrfToken,
@@ -87,23 +88,23 @@ function toUserSafe(row) {
   return publicUser(safe);
 }
 
-let lastTouchAt = 0;
-
 function resolveSession(db, req) {
   const token = getSessionToken(req);
   if (!token) return null;
-  const session = getSessionByTokenHash(db, sha256Hex(token));
+  const tokenHash = sha256Hex(token);
+  const session = getSessionByTokenHash(db, tokenHash);
   if (!session) return null;
   if (isSessionIdle(db, session, SESSION_IDLE_MS)) {
-    deleteSessionByTokenHash(db, sha256Hex(token));
+    deleteSessionByTokenHash(db, tokenHash);
     return null;
   }
   const user = getUserById(db, session.user_id);
   if (!user) return null;
-  // Slide the idle window, at most once every five minutes per process.
+  // Slide the idle window per session, at most once every five minutes.
+  // (A single process-global timer would starve every other user's touch.)
   const current = Date.now();
-  if (!session.last_seen_at || current - lastTouchAt > 5 * 60 * 1000) {
-    lastTouchAt = current;
+  const lastSeen = Date.parse(session.last_seen_at || session.created_at || '');
+  if (Number.isNaN(lastSeen) || current - lastSeen > 5 * 60 * 1000) {
     touchSession(db, session.id, new Date(current).toISOString());
   }
   return { user, session, token };
@@ -140,7 +141,7 @@ function destroySession(db, req, res) {
   const token = getSessionToken(req);
   if (token) deleteSessionByTokenHash(db, sha256Hex(token));
   const secure = process.env.NODE_ENV === 'production';
-  res.setHeader('Set-Cookie', clearSessionCookie({ secure }));
+  res.setHeader('Set-Cookie', [clearSessionCookie({ secure }), clearCsrfCookie({ secure })]);
 }
 
 /**
@@ -227,6 +228,8 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   }
 
   async function logout(req, res) {
+    // Require CSRF when a session exists (logout-CSRF); anonymous logout stays idempotent.
+    if (getSessionToken(req)) requireCsrf(req);
     destroySession(db, req, res);
     json(res, 200, { ok: true });
   }
@@ -245,14 +248,13 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     requireCsrf(req);
     const { user } = requireSession(db, req);
     const body = await readJsonBody(req);
-    const current = validatePassword(String(body.currentPassword == null ? '' : body.currentPassword));
-    if (body.currentPassword == null || String(body.currentPassword) === '') {
+    const currentValue = body.currentPassword == null ? '' : String(body.currentPassword);
+    if (currentValue === '') {
       throw new HttpError(400, 'Enter your current password.', { field: 'currentPassword' });
     }
-    if (current.error) {
-      throw new HttpError(400, current.error, { field: 'currentPassword' });
-    }
-    if (!verifyPassword(String(body.currentPassword), user.password_hash)) {
+    // Do not re-run the new-password policy on the current password: an older
+    // valid password must still verify even if the policy has tightened.
+    if (!verifyPassword(currentValue, user.password_hash)) {
       throw new HttpError(403, 'That is not your current password.', { field: 'currentPassword' });
     }
     const next = validatePassword(body.newPassword);
@@ -373,6 +375,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   }
 
   async function revokeSession(req, res, id) {
+    // Single implementation used by the /:id route in handle().
     requireCsrf(req);
     const { user } = requireSession(db, req);
     const target = getSessionById(db, Number(id));
@@ -381,6 +384,8 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     logEvent('session_revoked', { userId: user.id, sessionId: target.id });
     json(res, 200, { ok: true });
   }
+  // Note: handle() calls this helper directly; the routes map cannot express
+  // parameterised paths, so keep the logic in one place.
 
   async function revokeAllSessions(req, res) {
     requireCsrf(req);
@@ -388,7 +393,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     deleteAllSessionsForUser(db, user.id);
     logEvent('sessions_revoked_all', { userId: user.id });
     const secure = process.env.NODE_ENV === 'production';
-    res.setHeader('Set-Cookie', clearSessionCookie({ secure }));
+    res.setHeader('Set-Cookie', [clearSessionCookie({ secure }), clearCsrfCookie({ secure })]);
     json(res, 200, { ok: true });
   }
 
@@ -408,7 +413,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
 
   function shapePrefs(payload) {
     if (!payload || typeof payload !== 'object') throw new HttpError(400, 'Preferences must be a JSON object.');
-    if (JSON.stringify(payload).length > 64 * 1024) throw new HttpError(413, 'Preferences are too large.');
+    if (Buffer.byteLength(JSON.stringify(payload)) > 64 * 1024) throw new HttpError(413, 'Preferences are too large.');
     return payload;
   }
 
@@ -438,7 +443,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       const name = String(body.name == null ? '' : body.name).trim();
       if (!name || name.length > 64) throw new HttpError(400, 'Template names need 1–64 characters.', { field: 'name' });
       if (!body.payload || typeof body.payload !== 'object') throw new HttpError(400, 'Template payload must be a JSON object.');
-      if (JSON.stringify(body.payload).length > 128 * 1024) throw new HttpError(413, 'Template is too large.');
+      if (Buffer.byteLength(JSON.stringify(body.payload)) > 128 * 1024) throw new HttpError(413, 'Template is too large.');
       upsertTemplate(db, user.id, { name, payload: body.payload });
       json(res, 200, { ok: true, name });
       return;
@@ -456,12 +461,18 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     const { user } = requireSession(db, req);
     if (req.method === 'GET') {
       const mediaType = new URL(req.url, 'http://placeholder').searchParams.get('media');
+      if (mediaType && mediaType !== 'anime' && mediaType !== 'manga') {
+        throw new HttpError(400, 'media must be "anime" or "manga".');
+      }
       json(res, 200, { progress: listGuessProgress(db, user.id, mediaType || null) });
       return;
     }
     requireCsrf(req);
     const body = await readJsonBody(req);
-    const mediaType = body.mediaType === 'manga' ? 'manga' : 'anime';
+    if (body.mediaType !== 'anime' && body.mediaType !== 'manga') {
+      throw new HttpError(400, 'mediaType must be "anime" or "manga".');
+    }
+    const mediaType = body.mediaType;
     if (!Number.isInteger(body.dayIndex) || body.dayIndex < 0) {
       throw new HttpError(400, 'dayIndex must be a non-negative integer.');
     }
@@ -502,13 +513,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       const idPart = pathname.slice('/api/auth/sessions/'.length);
       const match = idPart.match(/^(\d+)$/);
       if (match && req.method === 'DELETE') {
-        const { user } = requireSession(db, req);
-        requireCsrf(req);
-        const target = getSessionById(db, Number(match[1]));
-        if (!target || target.user_id !== user.id) throw new HttpError(404, 'That session does not exist.');
-        deleteSessionByTokenHash(db, target.token_hash);
-        logEvent('session_revoked', { userId: user.id, sessionId: target.id });
-        json(res, 200, { ok: true });
+        await revokeSession(req, res, match[1]);
         return;
       }
       if (pathname === '/api/auth/sessions/revoke-all' && req.method === 'POST') {
