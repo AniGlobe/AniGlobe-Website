@@ -242,8 +242,8 @@ function slotsCard(message, busy) {
         globeStamp('sm')
       ),
       el('div', { class: 'export-identity' },
-        el('p', { class: 'export-name', style: { color: 'var(--card-muted)', fontSize: 'var(--fs-body)' } }, 'Your card appears here'),
-        el('p', { class: 'export-since' }, 'Enter a public MyAnimeList or AniList username to begin')
+        el('p', { class: 'export-name', style: { color: 'var(--card-muted)', fontSize: 'var(--fs-body)' } }, String(message || 'Your card appears here')),
+        el('p', { class: 'export-since' }, busy ? 'Working…' : 'Enter a public MyAnimeList or AniList username to begin')
       ),
       el('div', { class: 'export-archetype', style: { marginTop: 'var(--s3)' } },
         el('h3', { class: 'export-archetype-label' }, 'What you\'ll see'),
@@ -580,19 +580,18 @@ export default {
       if (!dialog.open) dialog.showModal();
       document.documentElement.classList.add('wrapped-dialog-open');
       colorPickers.sync();
-      closeButton.focus();
     }
 
     function closeDialog() {
       if (dialog.open) dialog.close();
       document.documentElement.classList.remove('wrapped-dialog-open');
-      if (lastTrigger && lastTrigger.focus) lastTrigger.focus();
     }
 
     closeButton.addEventListener('click', closeDialog);
     openCardButton.addEventListener('click', () => openDialog(openCardButton));
     dialog.addEventListener('close', () => {
       document.documentElement.classList.remove('wrapped-dialog-open');
+      if (lastTrigger && lastTrigger.focus) lastTrigger.focus();
     });
     dialog.addEventListener('click', (event) => {
       if (event.target === dialog) closeDialog();
@@ -793,8 +792,9 @@ export default {
     sectionOrderList.addEventListener('click', (event) => {
       const button = event.target.closest('button[data-move]');
       if (!button) return;
+      const moveDir = button.dataset.move;
       const currentIndex = sectionOrder.indexOf(button.dataset.section);
-      const nextIndex = currentIndex + (button.dataset.move === 'up' ? -1 : 1);
+      const nextIndex = currentIndex + (moveDir === 'up' ? -1 : 1);
       if (currentIndex < 0 || nextIndex < 0 || nextIndex >= sectionOrder.length) return;
       const [moved] = sectionOrder.splice(currentIndex, 1);
       sectionOrder.splice(nextIndex, 0, moved);
@@ -802,6 +802,8 @@ export default {
       savePreferences();
       refreshCard();
       setStatus(cardStatus, SECTIONS.find((section) => section.id === moved).label + ' moved.', 'info');
+      const refocus = sectionOrderList.querySelector('button[data-move="' + moveDir + '"][data-section="' + moved + '"]');
+      if (refocus) refocus.focus();
     });
 
     let draggedSectionId = null;
@@ -887,7 +889,7 @@ export default {
     });
     publishTemplateButton.addEventListener('click', async () => {
       const name = templateSelect.value;
-      if (!name) return;
+      if (!name || publishTemplateButton.disabled) return;
       if (!getSession()) {
         setStatus(cardStatus, 'Log in to publish a template to the library.', 'error');
         return;
@@ -895,6 +897,7 @@ export default {
       const templates = readTemplates();
       const current = templates.find((t) => t.name === name);
       const nextPublic = !(current && current.isPublic);
+      publishTemplateButton.disabled = true;
       try {
         await setTemplatePublic(name, nextPublic);
         const updated = templates.map((t) => t.name === name ? { ...t, isPublic: nextPublic } : t);
@@ -903,6 +906,7 @@ export default {
         setStatus(cardStatus, nextPublic ? '"' + name + '" is now public in the library.' : '"' + name + '" unpublished.', 'info');
       } catch (error) {
         setStatus(cardStatus, error && error.message ? error.message : 'Could not update that template.', 'error');
+        publishTemplateButton.disabled = false;
       }
     });
 

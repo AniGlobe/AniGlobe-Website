@@ -142,7 +142,7 @@ export function pngFileName(prefix, label, date) {
   const safe = String(label || 'card')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+\x24/g, '')
+    .replace(/^-+|-+$/g, '')
     .slice(0, 32);
 
   return (prefix || 'anicard') + '-' + (safe || 'card') + '-' + stamp + '.png';
