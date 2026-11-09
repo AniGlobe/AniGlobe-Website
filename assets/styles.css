@@ -2039,6 +2039,23 @@ html.wrapped-dialog-open { overflow: hidden; }
 .home-feature-label { font-weight: 600; font-size: var(--fs-body); }
 .home-feature-desc { color: var(--muted); font-size: var(--fs-small); line-height: 1.5; }
 .home-feature-arrow { color: var(--accent); font-weight: 700; }
+.home-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--s3); }
+.home-tile {
+  display: grid; gap: var(--s2); justify-items: center;
+  padding: var(--s4) var(--s3);
+  border-radius: 18px; background: var(--surface); border: 1px solid var(--border);
+  transition: transform var(--t-ui) var(--ease-out), border-color var(--t-hover) ease, background var(--t-hover) ease;
+}
+.home-tile:hover { transform: translateY(-3px); border-color: var(--control); background: var(--raised); }
+.home-tile-icon {
+  display: grid; place-items: center;
+  width: 56px; height: 56px; border-radius: 16px;
+  background: var(--raised); color: var(--text);
+  font-size: 24px; font-weight: 650;
+}
+.home-tile:hover .home-tile-icon { background: var(--accent); color: var(--ground); }
+.home-tile-label { font-size: var(--fs-small); font-weight: 600; text-align: center; }
+.home-tiles-cta { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: center; margin-top: var(--s2); }
 @media (max-width: 760px) {
   .home-hero { grid-template-columns: minmax(0, 1fr); padding: var(--s5); }
   .home-hero-visual { grid-template-columns: repeat(3, minmax(0, 1fr)); transform: none; }
