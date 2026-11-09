@@ -73,7 +73,7 @@ export default {
       const session = getSession();
       const heading = el(
         'div',
-        { class: 'tool-head' },
+        { class: 'tool-head account-head' },
         el('h1', {}, 'Account'),
         el('p', {}, 'Your account syncs Wrapped preferences, templates, and daily guess streaks.')
       );
