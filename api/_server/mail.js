@@ -19,6 +19,19 @@ function mailFrom() {
   return process.env.MAIL_FROM || 'AniGlobe <no-reply@localhost>';
 }
 
+/**
+ * Reply-To: the bare address from MAIL_FROM when it uses the
+ * "Display Name <address>" form, so replies go to the inbox without the
+ * display name. MAIL_REPLY_TO overrides it explicitly.
+ */
+function mailReplyTo() {
+  const override = process.env.MAIL_REPLY_TO;
+  if (override) return override;
+  const from = mailFrom();
+  const match = from.match(/<([^>]+)>/);
+  return match ? match[1].trim() : from.trim();
+}
+
 let transport = null;
 let transportWarned = false;
 
@@ -44,7 +57,7 @@ function smtpTransport() {
 }
 
 export async function sendMail({ to, subject, text }) {
-  const message = { from: mailFrom(), to, subject, text };
+  const message = { from: mailFrom(), replyTo: mailReplyTo(), to, subject, text };
 
   if (process.env.MAIL_TRANSPORT === 'smtp') {
     const transport = smtpTransport();
