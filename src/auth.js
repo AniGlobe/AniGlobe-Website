@@ -297,6 +297,15 @@ export async function usePublicTemplate(id) {
   return json;
 }
 
+export async function lovePublicTemplate(id, loved) {
+  const { status, json } = await request('/api/templates/public/' + encodeURIComponent(id) + '/love', {
+    method: 'POST',
+    body: { loved },
+  });
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not update your love.', json && json.details);
+  return json;
+}
+
 export async function pushGuessProgress(entry) {
   if (!getSession()) return false;
   try {

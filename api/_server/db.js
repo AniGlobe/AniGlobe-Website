@@ -148,6 +148,17 @@ const MIGRATIONS = [
     statements.push('CREATE INDEX IF NOT EXISTS templates_public_idx ON templates (is_public, updated_at DESC)');
     return statements;
   },
+  async (db) => {
+    return [
+      `CREATE TABLE IF NOT EXISTS template_likes (
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        template_id INTEGER NOT NULL REFERENCES templates (id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, template_id)
+      )`,
+      'CREATE INDEX IF NOT EXISTS template_likes_template_idx ON template_likes (template_id)',
+    ];
+  },
 ];
 
 function nowIso() {
@@ -392,13 +403,15 @@ export async function setTemplatePublic(db, userId, name, isPublic) {
   return Number(result.rowsAffected) > 0;
 }
 
-export async function listPublicTemplates(db, { limit = 50 } = {}) {
+export async function listPublicTemplates(db, { limit = 50, viewerId = null } = {}) {
   const rows = await getRows(db, `
-    SELECT templates.id, templates.name, templates.payload, templates.updated_at, users.username AS author
+    SELECT templates.id, templates.name, templates.payload, templates.updated_at, users.username AS author,
+           (SELECT COUNT(*) FROM template_likes WHERE template_id = templates.id) AS like_count,
+           (? IS NOT NULL AND EXISTS (SELECT 1 FROM template_likes WHERE user_id = ? AND template_id = templates.id)) AS loved
     FROM templates JOIN users ON users.id = templates.user_id
     WHERE templates.is_public = 1
     ORDER BY templates.updated_at DESC LIMIT ?
-  `, [limit]);
+  `, [viewerId != null ? viewerId : null, viewerId != null ? viewerId : null, limit]);
   return rows.map((row) => {
     let payload = {};
     try {
@@ -406,14 +419,28 @@ export async function listPublicTemplates(db, { limit = 50 } = {}) {
     } catch {
       payload = {};
     }
+    const sectionCount = Array.isArray(payload.order)
+      ? payload.order.filter((id) => typeof id === 'string').length
+      : 0;
     return {
       id: row.id,
       name: row.name,
       author: row.author,
       theme: typeof payload.theme === 'string' ? payload.theme : null,
+      layout: payload.layout === 'story' ? 'story' : 'square',
+      sections: sectionCount,
+      likes: Number(row.like_count || 0),
+      loved: row.loved === 1 || row.loved === true,
       updatedAt: row.updated_at,
     };
   });
+}
+
+export async function setTemplateLike(db, userId, templateId, loved) {
+  if (loved) {
+    return runWrite(db, 'INSERT OR IGNORE INTO template_likes (user_id, template_id, created_at) VALUES (?, ?, ?)', [userId, templateId, nowIso()]);
+  }
+  return runWrite(db, 'DELETE FROM template_likes WHERE user_id = ? AND template_id = ?', [userId, templateId]);
 }
 
 export async function getPublicTemplateById(db, id) {

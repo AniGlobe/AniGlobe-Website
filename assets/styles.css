@@ -259,7 +259,9 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: 0.02em;
 }
 
-.site-nav { display: grid; align-content: start; gap: 4px; flex: 1 1 auto; min-height: 0; }
+.site-nav { display: grid; align-content: start; gap: var(--s4); flex: 1 1 auto; min-height: 0; }
+.nav-group { display: grid; gap: 4px; }
+.nav-group .sidebar-caption { margin-bottom: 0; }
 
 .nav-link {
   display: flex;
@@ -1816,10 +1818,9 @@ html.wrapped-dialog-open { overflow: hidden; }
 .account-detail dt { color: var(--muted); font-size: var(--fs-small); font-weight: 500; word-break: break-word; }
 .account-detail dd { margin: 0; font-size: var(--fs-body); overflow-wrap: anywhere; }
 
-.account-form { display: grid; gap: var(--s3); max-width: 420px; }
-.account-panel > .account-subsection > .btn,
-.account-panel > .btn { width: 100%; max-width: 420px; justify-self: start; }
-.account-danger-field { max-width: 420px; }
+.account-form { display: grid; gap: var(--s3); max-width: 420px; margin-inline: auto; width: 100%; }
+.account-subsection > .btn { width: 100%; max-width: 420px; justify-self: center; }
+.account-danger-field { max-width: 420px; margin-inline: auto; width: 100%; }
 
 .account-danger-note { color: var(--muted); font-size: var(--fs-small); line-height: 1.55; }
 
@@ -1987,7 +1988,7 @@ html.wrapped-dialog-open { overflow: hidden; }
 .library-list { display: grid; gap: var(--s2); list-style: none; margin-top: var(--s3); padding: 0; }
 .library-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--s2) var(--s3);
   padding: var(--s2) var(--s3);
@@ -1996,6 +1997,36 @@ html.wrapped-dialog-open { overflow: hidden; }
 }
 .library-name { font-weight: 600; overflow-wrap: anywhere; }
 .library-meta { color: var(--muted); font-size: var(--fs-micro); margin-top: var(--s1); }
+.library-actions { display: flex; gap: var(--s2); align-items: center; }
+.library-love.is-loved { color: var(--negative); background: rgba(229, 72, 77, 0.1); }
+
+/* Mini template preview (no profile data invented — shape only) */
+.library-preview {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 3px 8px;
+  align-content: center;
+  width: 72px;
+  flex: none;
+}
+.library-preview-dot {
+  width: 28px;
+  height: 28px;
+  grid-row: span 3;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--raised);
+}
+.library-preview-bar { display: block; height: 6px; border-radius: 3px; background: var(--raised); }
+.library-preview-bar-lg { width: 100%; }
+.library-preview-bar-sm { width: 65%; }
+.library-preview-bar-md { width: 82%; }
+.library-dot-atlas { background: #e7f0ff; }
+.library-dot-coast { background: #dbeafe; }
+.library-dot-sakura { background: #fbd9cd; }
+.library-dot-ukiyo { background: #1c2440; }
+.library-dot-ember { background: #241610; }
+.library-dot-night { background: #151a22; }
 
 /* Guess history + streak calendar (Track B · B002) */
 .account-history-kpis { gap: 1px; }
@@ -2074,7 +2105,8 @@ html.wrapped-dialog-open { overflow: hidden; }
 
 @media (max-width: 520px) {
   .account-detail { grid-template-columns: minmax(0, 1fr); gap: var(--s1); }
-  .library-row { grid-template-columns: minmax(0, 1fr); }
+  .library-row { grid-template-columns: auto minmax(0, 1fr); }
+  .library-actions { grid-column: 1 / -1; }
   .library-row .btn { justify-self: start; width: 100%; }
   .account-session { grid-template-columns: minmax(0, 1fr) auto; }
   .account-session-last { grid-column: 1 / -1; }

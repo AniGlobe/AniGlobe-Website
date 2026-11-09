@@ -5,7 +5,7 @@
  */
 
 import { el, render, setStatus } from '../lib.js';
-import { AuthError, getSession, listPublicTemplates, usePublicTemplate } from '../auth.js';
+import { AuthError, getSession, listPublicTemplates, lovePublicTemplate, usePublicTemplate } from '../auth.js';
 
 export default {
   id: 'library',
@@ -101,9 +101,29 @@ export default {
           if (template.layout) metaParts.push(template.layout + ' card');
           if (template.sections != null) metaParts.push(template.sections + ' sections');
           metaParts.push(new Date(template.updatedAt).toLocaleDateString());
+          const preview = el(
+            'div',
+            { class: 'library-preview', 'aria-hidden': 'true' },
+            el('span', { class: 'library-preview-dot library-dot-' + String(template.theme || 'none'), title: template.theme || 'No theme' }),
+            el('span', { class: 'library-preview-bar library-preview-bar-lg' }),
+            el('span', { class: 'library-preview-bar library-preview-bar-sm' }),
+            el('span', { class: 'library-preview-bar library-preview-bar-md' })
+          );
+          const loveButton = el(
+            'button',
+            {
+              class: 'btn btn-quiet btn-sm library-love' + (template.loved ? ' is-loved' : ''),
+              type: 'button',
+              'aria-pressed': String(template.loved === true),
+              'aria-label': (template.loved ? 'Unlike' : 'Love') + ' ' + template.name,
+              dataset: { love: String(template.id), loved: String(template.loved === true) },
+            },
+            (template.loved ? '♥ ' : '♡ ') + String(template.likes != null ? template.likes : 0)
+          );
           return el(
             'li',
             { class: 'library-row' },
+            preview,
             el(
               'div',
               {},
@@ -115,7 +135,12 @@ export default {
                 metaParts.length ? ' · ' + metaParts.join(' · ') : ''
               )
             ),
-            el('button', { class: 'btn btn-outline btn-sm library-use', type: 'button', dataset: { use: String(template.id) } }, 'Use template')
+            el(
+              'div',
+              { class: 'library-actions' },
+              loveButton,
+              el('button', { class: 'btn btn-outline btn-sm library-use', type: 'button', dataset: { use: String(template.id) } }, 'Use template')
+            )
           );
         })
       );
@@ -136,6 +161,28 @@ export default {
     search.addEventListener('input', paint);
 
     list.addEventListener('click', async (event) => {
+      const loveButton = event.target.closest('button[data-love]');
+      if (loveButton) {
+        if (loveButton.disabled) return;
+        if (!getSession()) {
+          setStatus(status, 'Log in to love a template.', 'error');
+          return;
+        }
+        const nextLoved = loveButton.dataset.loved !== 'true';
+        loveButton.disabled = true;
+        try {
+          const result = await lovePublicTemplate(loveButton.dataset.love, nextLoved);
+          const template = all.find((t) => String(t.id) === String(loveButton.dataset.love));
+          if (template) {
+            template.loved = result.loved === true;
+            if (typeof result.likes === 'number') template.likes = result.likes;
+          }
+          paint();
+        } catch (error) {
+          setStatus(status, error instanceof AuthError ? error.message : 'Could not update your love.', 'error');
+        }
+        return;
+      }
       const button = event.target.closest('button[data-use]');
       if (!button || button.disabled) return;
       if (!getSession()) {

@@ -490,6 +490,15 @@ test('public template library: private stays hidden until published, use copies'
     const own = await owner.get('/api/sync/templates');
     assert.equal(own.json.templates.some((t) => t.name === fork.json.name), true);
 
+    const love = await owner.post(`/api/templates/public/${id}/love`, { loved: true });
+    assert.equal(love.status, 200);
+    assert.equal(love.json.loved, true);
+    const afterLove = await anon.get('/api/templates/public');
+    assert.equal(afterLove.json.templates[0].likes, 1);
+    const unlike = await owner.post(`/api/templates/public/${id}/love`, { loved: false });
+    assert.equal(unlike.json.loved, false);
+    assert.equal(unlike.json.likes, 0);
+
     const unpub = await owner.put('/api/sync/templates/Night%20plum', { isPublic: false });
     assert.equal(unpub.json.isPublic, false);
     assert.deepEqual((await anon.get('/api/templates/public')).json.templates, []);

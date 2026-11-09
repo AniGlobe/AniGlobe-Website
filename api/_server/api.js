@@ -61,6 +61,7 @@ import {
   setTemplatePublic,
   listPublicTemplates,
   getPublicTemplateById,
+  setTemplateLike,
   upsertTemplate,
   useResetToken,
   useVerifyToken,
@@ -555,7 +556,23 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   async function publicLibrary(req, res) {
     // No auth: the library is intentionally public. Only public templates
     // (explicit opt-in) are listed, with author + theme but no payload spam.
-    json(res, 200, { templates: await listPublicTemplates(db, { limit: 50 }) });
+    // Viewer is optional so guests still load it; logged-in users get `loved`.
+    const resolved = await resolveSession(db, req);
+    const viewerId = resolved ? resolved.user.id : null;
+    json(res, 200, { templates: await listPublicTemplates(db, { limit: 50, viewerId }) });
+  }
+
+  async function lovePublicTemplate(req, res, id) {
+    const { user } = await requireSession(db, req);
+    requireCsrf(req);
+    const source = await getPublicTemplateById(db, Number(id));
+    if (!source) throw new HttpError(404, 'That template does not exist.');
+    const body = await readJsonBody(req);
+    const loved = body.loved === true;
+    await setTemplateLike(db, user.id, Number(id), loved);
+    const listed = await listPublicTemplates(db, { limit: 50, viewerId: user.id });
+    const current = listed.find((t) => String(t.id) === String(id));
+    json(res, 200, { ok: true, loved, likes: current ? current.likes : null });
   }
 
   async function usePublicTemplate(req, res, id) {
@@ -632,6 +649,11 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       const useMatch = idPart.match(/^(\d+)\/use$/u);
       if (req.method === 'POST' && useMatch) {
         await usePublicTemplate(req, res, useMatch[1]);
+        return;
+      }
+      const loveMatch = idPart.match(/^(\d+)\/love$/u);
+      if (req.method === 'POST' && loveMatch) {
+        await lovePublicTemplate(req, res, loveMatch[1]);
         return;
       }
       throw new HttpError(404, 'Unknown endpoint.');

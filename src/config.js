@@ -13,12 +13,17 @@ export const runtime = {
   htmlToImageGlobal: 'htmlToImage',
 };
 
+export const TOOL_CATEGORIES = [
+  { id: 'create', label: 'Create' },
+  { id: 'play', label: 'Play' },
+];
+
 export const tools = [
-  { id: 'card', label: 'AniManga Wrapped', load: () => import('./tools/card.js') },
-  { id: 'library', label: 'Template library', load: () => import('./tools/library.js') },
-  { id: 'daily', label: 'Anime Guess', mediaType: 'anime', load: () => import('./tools/daily.js') },
-  { id: 'manga-daily', label: 'Manga Guess', mediaType: 'manga', load: () => import('./tools/daily.js') },
-  { id: 'account', label: 'Account', hidden: true, load: () => import('./tools/account.js') },
+  { id: 'card', label: 'AniManga Wrapped', category: 'create', load: () => import('./tools/card.js') },
+  { id: 'library', label: 'Template library', category: 'create', load: () => import('./tools/library.js') },
+  { id: 'daily', label: 'Anime Guess', category: 'play', mediaType: 'anime', load: () => import('./tools/daily.js') },
+  { id: 'manga-daily', label: 'Manga Guess', category: 'play', mediaType: 'manga', load: () => import('./tools/daily.js') },
+  { id: 'account', label: 'Account', hidden: true, category: 'account', load: () => import('./tools/account.js') },
 ];
 
 export const defaultToolId = 'card';

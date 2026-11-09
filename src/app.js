@@ -6,7 +6,7 @@
  * calls it before mounting the next one so listeners and timers do not pile up.
  */
 
-import { site, tools, resolveToolId, defaultToolId } from './config.js';
+import { site, tools, TOOL_CATEGORIES, resolveToolId, defaultToolId } from './config.js';
 import { el, render } from './lib.js';
 import { getProfile, getSession, logout, onSessionChange, refreshSession } from './auth.js';
 import { createAuthDialog } from './tools/auth-dialog.js';
@@ -118,24 +118,36 @@ function renderBrand() {
 }
 
 function renderNav() {
-  const links = () =>
-    tools
-      .filter((tool) => !tool.hidden)
-      .map((tool) =>
+  const groups = TOOL_CATEGORIES.map((category) => {
+    const items = tools.filter((tool) => !tool.hidden && tool.category === category.id);
+    if (!items.length) return null;
+    return el(
+      'div',
+      { class: 'nav-group' },
+      el('p', { class: 'sidebar-caption' }, category.label),
+      ...items.map((tool) =>
         el(
           'a',
           { class: 'nav-link', href: '#/' + tool.id, dataset: { tool: tool.id } },
           el('span', {}, tool.label)
         )
-      );
-
-  render(dom.nav, links());
+      )
+    );
+  });
+  render(dom.nav, ...groups);
 }
 
 function renderFooter() {
-  const toolLinks = tools.filter((tool) => !tool.hidden).map((tool) =>
-    el('a', { href: '#/' + tool.id }, tool.label)
-  );
+  const categoryLinks = TOOL_CATEGORIES.map((category) => {
+    const links = tools.filter((tool) => !tool.hidden && tool.category === category.id);
+    if (!links.length) return null;
+    return el(
+      'nav',
+      { class: 'footer-links', 'aria-label': 'AniGlobe ' + category.label.toLowerCase() },
+      el('h3', {}, category.label),
+      ...links.map((tool) => el('a', { href: '#/' + tool.id }, tool.label))
+    );
+  });
   const sources = [
     el('a', { href: 'https://myanimelist.net', rel: 'noopener noreferrer', target: '_blank' }, 'MyAnimeList'),
     el('a', { href: 'https://jikan.lucashdo.com/', rel: 'noopener noreferrer', target: '_blank' }, 'Jikan-Edge'),
@@ -164,12 +176,7 @@ function renderFooter() {
       el(
         'div',
         { class: 'footer-directory' },
-        el(
-          'nav',
-          { class: 'footer-links', 'aria-label': 'AniGlobe tools' },
-          el('h3', {}, 'Tools'),
-          ...toolLinks
-        ),
+        ...categoryLinks,
         el(
           'nav',
           { class: 'footer-links', 'aria-label': 'Data sources' },
