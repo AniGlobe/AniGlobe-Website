@@ -1702,14 +1702,16 @@ html.wrapped-dialog-open { overflow: hidden; }
 
 .wrapped-dialog-body { display: grid; grid-template-columns: minmax(0, 1fr) 400px; min-height: 0; }
 
-/* the mat: one lightness step above the sheet, flat, no pattern */
+/* the mat: one lightness step above the sheet, flat, no pattern.
+   Flex column + margin:auto centers the card when it fits, and scrolls
+   from the top when it doesn't (grid place-items:center clips the top). */
 .wrapped-dialog-stage {
-  display: grid; place-items: center; gap: var(--s3); align-content: center;
+  display: flex; flex-direction: column; align-items: center; gap: var(--s3);
   overflow: auto; padding: var(--s5);
   background: var(--raised);
 }
 .wrapped-dialog-stage .export-card { max-width: 720px; }
-.wrapped-dialog-stage .card-stage { width: 100%; justify-items: center; }
+.wrapped-dialog-stage .card-stage { margin: auto; width: 100%; justify-items: center; }
 
 .wrapped-stage-actions { display: flex; flex-wrap: wrap; gap: var(--s2); width: 100%; max-width: 560px; }
 .wrapped-stage-actions .btn { flex: 1 1 140px; min-height: 44px; }
@@ -1834,7 +1836,11 @@ html.wrapped-dialog-open { overflow: hidden; }
 
 /* ---------- account page: devices, verification, link pages ---------- */
 
-.account-stack { display: grid; gap: var(--s4); }
+.account-stack { display: grid; gap: var(--s4); width: 100%; max-width: 860px; margin-inline: auto; }
+.account-stack > .panel { padding: var(--s4); }
+@media (min-width: 1100px) {
+  .account-stack { max-width: 860px; }
+}
 
 .account-verified,
 .account-unverified {
@@ -1934,20 +1940,20 @@ html.wrapped-dialog-open { overflow: hidden; }
   position: absolute;
   top: calc(100% + var(--s2));
   right: 0;
-  min-width: 168px;
+  min-width: 160px;
   padding: var(--s1);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-card);
+  border-radius: 12px;
   z-index: 60;
   display: grid;
-  gap: var(--s1);
+  gap: 2px;
 }
 .topbar-menu[hidden] { display: none; }
 .topbar-menu-item {
   display: block;
   width: 100%;
-  min-height: 44px;
+  min-height: 40px;
   padding: 0 var(--s3);
   border: 0;
   border-radius: 8px;
@@ -1956,7 +1962,7 @@ html.wrapped-dialog-open { overflow: hidden; }
   font-size: var(--fs-small);
   text-align: left;
   cursor: pointer;
-  line-height: 44px;
+  line-height: 40px;
   text-decoration: none;
 }
 .topbar-menu-item:hover, .topbar-menu-item:focus-visible { background: var(--raised); }
