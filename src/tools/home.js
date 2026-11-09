@@ -24,12 +24,18 @@ export function renderHome(root) {
 
   const hero = el(
     'section',
-    { class: 'home-hero home-hero-solo' },
+    { class: 'home-hero' },
     el('div', { class: 'home-hero-copy' },
       el('h1', { class: 'home-title' }, site.tagline),
-      el('p', { class: 'onboarding-lead' },
-        session ? 'Welcome back, ' + session.user.username + '. Your streaks and templates are synched.' : 'Turn any public anime or manga profile into a shareable wrap card, then play the daily title-guessing game.'),
+      session ? el('p', { class: 'onboarding-lead' }, 'Welcome back, ' + session.user.username + '.') : null,
       el('div', { class: 'onboarding-ctas' }, ...heroCtas)
+    ),
+    el(
+      'div',
+      { class: 'home-hero-visual', 'aria-hidden': 'true' },
+      el('span', { class: 'home-visual-card home-visual-card-a' }, 'Wrapped'),
+      el('span', { class: 'home-visual-card home-visual-card-b' }, 'Daily'),
+      el('span', { class: 'home-visual-card home-visual-card-c' }, 'Library')
     )
   );
 
