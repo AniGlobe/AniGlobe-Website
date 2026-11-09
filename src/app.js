@@ -12,7 +12,7 @@ import { getProfile, getSession, logout, onSessionChange, refreshSession } from 
 import { renderReset, renderVerify } from './tools/auth-links.js';
 import { renderProfile } from './tools/profile-page.js';
 import { renderAuthPage } from './tools/auth-page.js';
-import { renderOnboarding } from './tools/onboarding.js';
+import { renderHome } from './tools/home.js';
 import { initialAvatarDataUrl } from './domain/avatar.js';
 
 const dom = {
@@ -113,6 +113,7 @@ function renderBrand() {
 }
 
 function renderNav() {
+  const homeLink = el('a', { class: 'nav-link', href: '#/home', dataset: { tool: 'home' } }, el('span', {}, 'Home'));
   const groups = TOOL_CATEGORIES.map((category) => {
     const items = tools.filter((tool) => !tool.hidden && tool.category === category.id);
     if (!items.length) return null;
@@ -129,20 +130,23 @@ function renderNav() {
       )
     );
   });
-  render(dom.nav, ...groups);
+  render(dom.nav, homeLink, ...groups);
 }
 
 function renderFooter() {
-  const categoryLinks = TOOL_CATEGORIES.map((category) => {
-    const links = tools.filter((tool) => !tool.hidden && tool.category === category.id);
-    if (!links.length) return null;
-    return el(
-      'nav',
-      { class: 'footer-links', 'aria-label': 'AniGlobe ' + category.label.toLowerCase() },
-      el('h3', {}, category.label),
-      ...links.map((tool) => el('a', { href: '#/' + tool.id }, tool.label))
-    );
-  });
+  const categoryLinks = [
+    el('nav', { class: 'footer-links', 'aria-label': 'AniGlobe home' }, el('h3', {}, 'Home'), el('a', { href: '#/home' }, 'Home')),
+    ...TOOL_CATEGORIES.map((category) => {
+      const links = tools.filter((tool) => !tool.hidden && tool.category === category.id);
+      if (!links.length) return null;
+      return el(
+        'nav',
+        { class: 'footer-links', 'aria-label': 'AniGlobe ' + category.label.toLowerCase() },
+        el('h3', {}, category.label),
+        ...links.map((tool) => el('a', { href: '#/' + tool.id }, tool.label))
+      );
+    }),
+  ];
   const sources = [
     el('a', { href: 'https://myanimelist.net', rel: 'noopener noreferrer', target: '_blank' }, 'MyAnimeList'),
     el('a', { href: 'https://jikan.lucashdo.com/', rel: 'noopener noreferrer', target: '_blank' }, 'Jikan-Edge'),
@@ -282,13 +286,15 @@ async function mountRoute() {
     dom.app.focus({ preventScroll: true });
     return;
   }
-  if (rawPath.startsWith('/welcome')) {
+  if (rawPath === '' || rawPath === '/' || rawPath.startsWith('/home') || rawPath.startsWith('/welcome')) {
     mountToken += 1;
     runCleanup();
     render(dom.app);
-    renderOnboarding(dom.app);
-    document.title = 'Welcome | ' + site.name;
+    renderHome(dom.app);
+    document.title = 'AniGlobe: Your anime world, wrapped';
     dom.app.focus({ preventScroll: true });
+    closeSidebar();
+    window.scrollTo({ top: 0, behavior: 'auto' });
     return;
   }
 
@@ -404,7 +410,7 @@ function start() {
   }
 
   if (!window.location.hash) {
-    window.location.replace('#/' + defaultToolId);
+    window.location.replace('#/');
   }
 
   window.addEventListener('hashchange', onHashChange);
