@@ -13,6 +13,7 @@ import { renderReset, renderVerify } from './tools/auth-links.js';
 import { renderProfile } from './tools/profile-page.js';
 import { renderAuthPage } from './tools/auth-page.js';
 import { renderHome } from './tools/home.js';
+import { renderToolsPage } from './tools/tools-page.js';
 import { initialAvatarDataUrl } from './domain/avatar.js';
 
 const dom = {
@@ -292,6 +293,17 @@ async function mountRoute() {
     render(dom.app);
     renderHome(dom.app);
     document.title = 'AniGlobe: Your anime world, wrapped';
+    dom.app.focus({ preventScroll: true });
+    closeSidebar();
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  if (rawPath.startsWith('/tools')) {
+    mountToken += 1;
+    runCleanup();
+    render(dom.app);
+    renderToolsPage(dom.app);
+    document.title = 'Browse Tools | ' + site.name;
     dom.app.focus({ preventScroll: true });
     closeSidebar();
     window.scrollTo({ top: 0, behavior: 'auto' });

@@ -5,19 +5,22 @@
  */
 
 import { el, render } from '../lib.js';
-import { site, tools } from '../config.js';
+import { site } from '../config.js';
 import { getSession } from '../auth.js';
 
 export function renderHome(root) {
   const session = getSession();
-  const visibleTools = tools.filter((tool) => !tool.hidden);
 
   const heroCtas = session
     ? [
-        el('a', { class: 'btn btn-primary home-cta-lg', href: '#tools' }, 'Browse Tools'),
+        el('a', { class: 'btn btn-primary home-cta-lg', href: '#/tools' }, 'Browse Tools'),
+        el('a', { class: 'btn btn-outline home-cta-lg', href: '#/card' }, 'Open Wrapped'),
+        el('a', { class: 'btn btn-quiet', href: '#/account' }, 'My account'),
       ]
     : [
-        el('a', { class: 'btn btn-primary home-cta-lg', href: '#tools' }, 'Browse Tools'),
+        el('a', { class: 'btn btn-primary home-cta-lg', href: '#/tools' }, 'Browse Tools'),
+        el('a', { class: 'btn btn-outline home-cta-lg', href: '#/signup' }, 'Create free account'),
+        el('a', { class: 'btn btn-quiet', href: '#/login' }, 'Log in'),
       ];
 
   const hero = el(
@@ -37,21 +40,5 @@ export function renderHome(root) {
     )
   );
 
-  const featuresSection = el(
-    'section',
-    { class: 'home-section', id: 'tools' },
-    el('div', { class: 'home-tiles' },
-      ...visibleTools.map((tool) =>
-        el('a', { class: 'home-tile', href: '#/' + tool.id },
-          el('span', { class: 'home-tile-icon', 'aria-hidden': 'true' }, tool.label.slice(0, 1).toUpperCase()),
-          el('span', { class: 'home-tile-label' }, tool.label)
-        )
-      )
-    ),
-    session
-      ? el('p', { class: 'home-tiles-cta' }, el('a', { class: 'btn btn-quiet btn-sm', href: '#/account' }, 'My account'))
-      : el('p', { class: 'home-tiles-cta' }, el('a', { class: 'btn btn-quiet btn-sm', href: '#/login' }, 'Log in'), el('a', { class: 'btn btn-primary btn-sm', href: '#/signup' }, 'Create free account'))
-  );
-
-  render(root, el('div', { class: 'home' }, hero, featuresSection));
+  render(root, el('div', { class: 'home' }, hero));
 }
