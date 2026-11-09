@@ -8,7 +8,7 @@
 
 import { site, tools, resolveToolId, defaultToolId } from './config.js';
 import { el, render } from './lib.js';
-import { getSession, logout, onSessionChange, refreshSession } from './auth.js';
+import { getProfile, getSession, logout, onSessionChange, refreshSession } from './auth.js';
 import { createAuthDialog } from './tools/auth-dialog.js';
 import { renderReset, renderVerify } from './tools/auth-links.js';
 import { renderProfile } from './tools/profile-page.js';
@@ -32,26 +32,70 @@ function getAuthDialog() {
   return authDialog;
 }
 
+function closeTopbarMenus() {
+  const open = document.querySelector('.topbar-menu:not([hidden])');
+  if (!open) return;
+  open.hidden = true;
+  const trigger = open.parentElement && open.parentElement.querySelector('[aria-haspopup="true"]');
+  if (trigger) trigger.setAttribute('aria-expanded', 'false');
+}
+
 function renderTopbarAuth() {
   const session = getSession();
   const actions = [];
   if (session) {
-    const accountLink = el(
-      'a',
-      { class: 'btn btn-outline btn-sm topbar-account-link', href: '#/account' },
-      el('img', {
-        class: 'topbar-avatar',
-        src: initialAvatarDataUrl(session.user.username),
-        alt: '',
-      }),
-      el('span', {}, session.user.username)
+    const avatarImg = el('img', {
+      class: 'topbar-avatar-btn-img',
+      src: initialAvatarDataUrl(session.user.username),
+      alt: 'Profile picture for ' + session.user.username,
+    });
+    const avatarButton = el(
+      'button',
+      {
+        class: 'topbar-avatar-btn',
+        type: 'button',
+        'aria-haspopup': 'true',
+        'aria-expanded': 'false',
+        'aria-label': 'Account menu for ' + session.user.username,
+      },
+      avatarImg
     );
-    const logoutButton = el('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, 'Log out');
+    const profileLink = el('a', { class: 'topbar-menu-item', href: '#/account', role: 'menuitem' }, 'Profile');
+    const logoutButton = el('button', { class: 'topbar-menu-item', type: 'button', role: 'menuitem' }, 'Log out');
+    const menu = el('div', { class: 'topbar-menu', role: 'menu', hidden: true }, profileLink, logoutButton);
+    const wrapper = el('div', { class: 'topbar-account-menu' }, avatarButton, menu);
+
+    avatarButton.addEventListener('click', () => {
+      const nowOpen = menu.hidden;
+      closeTopbarMenus();
+      menu.hidden = !nowOpen;
+      avatarButton.setAttribute('aria-expanded', String(nowOpen));
+      if (nowOpen) profileLink.focus();
+    });
+    menu.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        closeTopbarMenus();
+        avatarButton.focus();
+      }
+    });
+    profileLink.addEventListener('click', () => {
+      closeTopbarMenus();
+    });
     logoutButton.addEventListener('click', async () => {
       await logout();
       if (resolveToolId(window.location.hash) === 'account') window.location.hash = '#/' + defaultToolId;
     });
-    actions.push(accountLink, logoutButton);
+    actions.push(wrapper);
+    // Upgrade to a custom avatar when it exists; the generated initial
+    // paints instantly and is replaced once the profile loads.
+    getProfile()
+      .then((profile) => {
+        if (profile && profile.avatar) avatarImg.src = profile.avatar;
+      })
+      .catch(() => {
+        /* offline: keep the generated initial */
+      });
   } else {
     const loginButton = el('button', { class: 'btn btn-outline btn-sm', type: 'button' }, 'Log in');
     const registerButton = el('button', { class: 'btn btn-primary btn-sm', type: 'button' }, 'Create account');
@@ -271,6 +315,7 @@ async function mountRoute() {
 }
 
 function onHashChange() {
+  closeTopbarMenus();
   mountRoute();
 }
 
@@ -301,11 +346,20 @@ function start() {
   dom.sidebarToggle.addEventListener('click', toggleSidebar);
   dom.sidebarBackdrop.addEventListener('click', closeSidebar);
 
-  // Close sidebar on Escape
+  // Close sidebar on Escape; close the account menu on Escape/outside click
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
-      closeSidebar();
+      if (document.querySelector('.topbar-menu:not([hidden])')) {
+        const trigger = document.querySelector('.topbar-avatar-btn[aria-expanded="true"]');
+        closeTopbarMenus();
+        if (trigger) trigger.focus();
+      } else {
+        closeSidebar();
+      }
     }
+  });
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.topbar-account-menu')) closeTopbarMenus();
   });
 
   // Close sidebar when clicking a nav link
