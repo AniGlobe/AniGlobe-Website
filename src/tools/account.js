@@ -192,9 +192,9 @@ export default {
       // --- public profile: bio + avatar (Track B · B001) -------------------
       const avatarPreview = el('img', { class: 'account-avatar', alt: 'Your avatar', hidden: true });
       const bioInput = el('textarea', { id: 'account-bio', maxlength: String(BIO_MAX_CHARS), rows: '3', placeholder: 'A short bio…', 'aria-describedby': 'account-bio-count' });
-      const bioCount = el('p', { class: 'account-danger-note', id: 'account-bio-count' });
-      const avatarFile = el('input', { type: 'file', id: 'account-avatar-file', accept: 'image/jpeg,image/png,image/webp' });
-      const avatarStatus = el('p', { class: 'account-danger-note' });
+      const bioCount = el('p', { class: 'account-danger-note', id: 'account-bio-count', 'aria-live': 'polite' });
+      const avatarFile = el('input', { type: 'file', id: 'account-avatar-file', accept: 'image/jpeg,image/png,image/webp', 'aria-describedby': 'account-avatar-status' });
+      const avatarStatus = el('p', { class: 'account-danger-note', id: 'account-avatar-status', 'aria-live': 'polite' });
       const removeAvatarButton = el('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, 'Remove avatar');
       const profileSaveButton = el('button', { class: 'btn btn-primary', type: 'submit' }, 'Save profile');
       const profileForm = el(
@@ -204,7 +204,7 @@ export default {
           'div',
           { class: 'account-avatar-row' },
           avatarPreview,
-          avatarFile
+          el('div', { class: 'field' }, el('label', { for: 'account-avatar-file' }, 'Avatar (JPEG, PNG, or WebP, resized to 256 px)'), avatarFile)
         ),
         avatarStatus,
         el('div', { class: 'field' }, el('label', { for: 'account-bio' }, 'Bio'), bioInput, bioCount),

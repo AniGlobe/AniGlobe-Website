@@ -324,7 +324,7 @@ export default {
     });
     const stage = el(
       'div',
-      { class: 'card-stage', 'aria-live': 'polite' },
+      { class: 'card-stage' },
       slotsCard('Your wrap will take shape here. Enter a public profile to begin.')
     );
     const actions = el('div', { class: 'card-actions wrapped-stage-actions', hidden: true });
