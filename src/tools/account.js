@@ -428,6 +428,7 @@ export default {
         el(
           'section',
           { class: 'panel account-panel' },
+          el('h2', { class: 'panel-title' }, 'Overview'),
           el(
             'dl',
             { class: 'account-details' },
@@ -435,33 +436,46 @@ export default {
             el('div', { class: 'account-detail' }, el('dt', {}, 'Email'), el('dd', {}, session.user.email, ' ', verifiedBadge)),
             el('div', { class: 'account-detail' }, el('dt', {}, 'Member since'), el('dd', {}, new Date(session.user.createdAt).toLocaleDateString()))
           ),
-          el('div', { class: 'account-verify-row' }, resendButton),
-          el('h2', { class: 'panel-title' }, 'Change password'),
-          changeForm,
-          el('h2', { class: 'panel-title' }, 'Reset by email'),
-          el(
-            'p',
-            { class: 'account-danger-note' },
-            'We email a one-hour reset link. The request answers the same whether or not the email exists.'
-          ),
-          resetForm,
-          el('h2', { class: 'panel-title' }, 'Your data'),
-          exportButton,
-          el('h2', { class: 'panel-title' }, 'Danger zone'),
-          el(
-            'p',
-            { class: 'account-danger-note' },
-            'Deleting your account removes your credentials, synced preferences, templates, and guess progress. This cannot be undone.'
-          ),
-          el('div', { class: 'field' }, el('label', { for: 'account-delete-password' }, 'Confirm with your password'), confirmPassword),
-          deleteButton,
-          el('h2', { class: 'panel-title' }, 'Session'),
-          logoutButton,
-          status
+          el('div', { class: 'account-verify-row' }, resendButton)
         ),
         profileSection,
+        el(
+          'section',
+          { class: 'panel account-panel' },
+          el('div', { class: 'account-subsection' }, el('h2', { class: 'panel-title' }, 'Change password'), changeForm),
+          el(
+            'div',
+            { class: 'account-subsection' },
+            el('h2', { class: 'panel-title' }, 'Reset by email'),
+            el(
+              'p',
+              { class: 'account-danger-note' },
+              'We email a one-hour reset link. The request answers the same whether or not the email exists.'
+            ),
+            resetForm
+          )
+        ),
         sessionsSection,
-        guessSection
+        guessSection,
+        el(
+          'section',
+          { class: 'panel account-panel' },
+          el('div', { class: 'account-subsection' }, el('h2', { class: 'panel-title' }, 'Your data'), exportButton),
+          el(
+            'div',
+            { class: 'account-subsection' },
+            el('h2', { class: 'panel-title' }, 'Danger zone'),
+            el(
+              'p',
+              { class: 'account-danger-note' },
+              'Deleting your account removes your credentials, synced preferences, templates, and guess progress. This cannot be undone.'
+            ),
+            el('div', { class: 'field account-danger-field' }, el('label', { for: 'account-delete-password' }, 'Confirm with your password'), confirmPassword),
+            deleteButton
+          ),
+          el('div', { class: 'account-subsection' }, el('h2', { class: 'panel-title' }, 'Session'), logoutButton),
+          status
+        )
       );
 
       render(root, heading, body);

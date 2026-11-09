@@ -1803,15 +1803,21 @@ html.wrapped-dialog-open { overflow: hidden; }
 .auth-mode-toggle { color: var(--accent); font-weight: 500; }
 
 .account-panel { display: grid; gap: var(--s4); }
+.account-panel .panel-title { margin-bottom: 0; }
+.account-subsection { display: grid; gap: var(--s3); padding-top: var(--s4); border-top: 1px solid var(--border); }
+.account-subsection:first-child { padding-top: 0; border-top: 0; }
 .account-details { display: grid; gap: var(--s2); margin: 0; }
 .account-detail {
-  display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: var(--s3);
+  display: grid; grid-template-columns: minmax(110px, 140px) minmax(0, 1fr); gap: var(--s3);
   padding: var(--s2) 0; border-bottom: 1px solid var(--border);
 }
-.account-detail dt { color: var(--muted); font-size: var(--fs-small); font-weight: 500; }
+.account-detail dt { color: var(--muted); font-size: var(--fs-small); font-weight: 500; word-break: break-word; }
 .account-detail dd { margin: 0; font-size: var(--fs-body); overflow-wrap: anywhere; }
 
 .account-form { display: grid; gap: var(--s3); max-width: 420px; }
+.account-panel > .account-subsection > .btn,
+.account-panel > .btn { width: 100%; max-width: 420px; justify-self: start; }
+.account-danger-field { max-width: 420px; }
 
 .account-danger-note { color: var(--muted); font-size: var(--fs-small); line-height: 1.55; }
 
@@ -2047,6 +2053,15 @@ html.wrapped-dialog-open { overflow: hidden; }
 .account-history-won { color: var(--pill-positive-ink); font-weight: 600; }
 .account-history-lost { color: var(--muted); }
 @media (max-width: 760px) {
-  .account-history-kpis { grid-auto-columns: minmax(0, 1fr); }
+  .account-history-kpis { grid-auto-flow: row; grid-auto-columns: unset; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .account-history-row { grid-template-columns: minmax(0, 1fr) auto; }
+}
+
+@media (max-width: 520px) {
+  .account-detail { grid-template-columns: minmax(0, 1fr); gap: var(--s1); }
+  .library-row { grid-template-columns: minmax(0, 1fr); }
+  .library-row .btn { justify-self: start; width: 100%; }
+  .account-session { grid-template-columns: minmax(0, 1fr) auto; }
+  .account-session-last { grid-column: 1 / -1; }
+  .account-calendar-cell { min-height: 28px; }
 }
