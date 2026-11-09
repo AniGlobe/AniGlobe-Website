@@ -200,7 +200,9 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       passwordHash: hashPassword(password.value),
     });
     const token = await issueVerifyToken(req, user);
-    mailVerifyToken(req, user, token).catch((error) => logEvent('verify_mail_failed', { userId: user.id, error: error.message }));
+    // Awaited, not fire-and-forget: on serverless (Vercel) the instance can
+    // freeze right after the response, silently killing an in-flight send.
+    await mailVerifyToken(req, user, token).catch((error) => logEvent('verify_mail_failed', { userId: user.id, error: error.message }));
     logEvent('register', { userId: user.id, ip: clientIp(req) });
     await issueSession(db, req, res, user);
     json(res, 201, { user: publicUser(user) });
@@ -311,7 +313,8 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       const expiresAt = new Date(Date.now() + RESET_TOKEN_LIFETIME_MS).toISOString();
       await createResetToken(db, user.id, sha256Hex(token), expiresAt);
       const url = `${originOf(req)}#/reset?token=${encodeURIComponent(token)}`;
-      mailer(resetPasswordMail(user.email, url)).catch((error) => logEvent('reset_mail_failed', { userId: user.id, error: error.message }));
+      // Awaited for the same serverless reason as the register send above.
+      await mailer(resetPasswordMail(user.email, url)).catch((error) => logEvent('reset_mail_failed', { userId: user.id, error: error.message }));
       logEvent('password_reset_requested', { userId: user.id });
     }
     json(res, 200, { ok: true });
@@ -364,7 +367,8 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       return;
     }
     const token = await issueVerifyToken(req, user);
-    mailVerifyToken(req, user, token).catch((error) => logEvent('verify_resend_failed', { userId: user.id, error: error.message }));
+    // Awaited — see the register send for why fire-and-forget dies on serverless.
+    await mailVerifyToken(req, user, token).catch((error) => logEvent('verify_resend_failed', { userId: user.id, error: error.message }));
     json(res, 200, { ok: true });
   }
 

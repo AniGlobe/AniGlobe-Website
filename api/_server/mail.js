@@ -34,6 +34,11 @@ function smtpTransport() {
     auth: process.env.SMTP_USER
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' }
       : undefined,
+    // Short timeouts: a serverless instance must fail fast, not hang for the
+    // nodemailer defaults (2 min) waiting on a dead SMTP server.
+    connectionTimeout: 10000,
+    greetingTimeout: 5000,
+    socketTimeout: 10000,
   });
   return transport;
 }
