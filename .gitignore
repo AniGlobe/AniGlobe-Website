@@ -17,8 +17,8 @@ DESIGN.md
 artifacts/
 !assets/logo/**/*.png
 *.txt
-tmp-probe.txt
-tmp-probe2.txt
+tmp-probe*
+probe-*.mjs
 
 # runtime account database (regenerated on boot, never committed)
 data/

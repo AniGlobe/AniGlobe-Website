@@ -216,7 +216,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       throw new HttpError(400, 'Enter your username or email and password.');
     }
 
-    const gate = await loginLimiter.consume(clientIp(req) + ':' + identifier.toLowerCase());
+    const gate = await loginLimiter.consume(clientIp(req) + ':' + sha256Hex(identifier.toLowerCase()));
     if (!gate.allowed) throw new HttpError(429, 'Too many attempts. Try again in a few minutes.');
 
     const user = identifier.includes('@')
@@ -302,7 +302,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       json(res, 200, { ok: true });
       return;
     }
-    const gate = await resetLimiter.consume(clientIp(req) + ':' + email.value);
+    const gate = await resetLimiter.consume(clientIp(req) + ':' + sha256Hex(email.value));
     if (!gate.allowed) {
       json(res, 200, { ok: true });
       return;

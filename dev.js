@@ -8,6 +8,11 @@
  *   HOST            default 0.0.0.0
  *   DATABASE_URL    database URL (default: file:<root>/data/aniglobe.db;
  *                   use libsql://... + DATABASE_AUTH_TOKEN for Turso)
+ *                   On Vercel, use a durable Turso URL — the default file
+ *                   is ephemeral/per-instance.
+ *   TRUST_PROXY     set to 1 behind a TLS-terminating proxy (Vercel) so
+ *                   X-Forwarded-For/Host are trusted for client IPs and
+ *                   reset/verify origins (https).
  *   NODE_ENV        "production" adds Secure to cookies + HSTS header
  */
 
@@ -18,7 +23,7 @@ import { createDbRateLimiter } from './api/_server/ratelimit.js';
 import { createApiRouter } from './api/_server/api.js';
 import { createRequestHandler } from './api/_server/handler.js';
 import { serveStatic } from './api/_server/static.js';
-import { HttpError } from './api/_server/http.js';
+import { HttpError, sendHttpError } from './api/_server/http.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -44,12 +49,8 @@ const server = createServer(async (req, res) => {
     }
     serveStatic(req, res, url.pathname);
   } catch (error) {
-    if (!res.headersSent) {
-      res.writeHead(error.status || 500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: error.message || 'Server error' }));
-    } else {
-      res.end();
-    }
+    if (!res.headersSent) sendHttpError(res, error);
+    else res.end();
   }
 });
 

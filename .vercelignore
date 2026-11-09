@@ -11,3 +11,9 @@ data
 *.md
 .DS_Store
 node_modules
+probe-*.mjs
+tmp-probe*
+dev.js
+vercel.json
+package-lock.json
+*.db

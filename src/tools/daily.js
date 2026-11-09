@@ -149,23 +149,22 @@ export default {
         const message = error && error.message
           ? error.message
           : 'Could not load today’s ' + media.label.toLowerCase() + ' puzzle from MyAnimeList. Check your connection and try again.';
+        const retry = el('button', { class: 'btn btn-outline', type: 'button' }, 'Try again');
         render(
           body,
-          el(
-            'div',
-            { class: 'daily-empty', role: 'alert' },
-            el('p', {}, message),
-            el(
-              'button',
-              {
-                class: 'btn btn-outline',
-                type: 'button',
-                onclick: () => window.location.reload(),
-              },
-              'Try again'
-            )
-          )
+          el('div', { class: 'daily-empty', role: 'alert' }, el('p', {}, message), retry)
         );
+        retry.focus();
+        retry.addEventListener('click', () => {
+          const mountCtx = root;
+          // Re-mount this tool in place — same as a hashchange remount,
+          // without losing scroll position or the cached order.
+          const entry = { id: 'daily', label: media.label + ' Guess', mediaType: media.id };
+          const modPromise = import('./daily.js');
+          modPromise.then((mod) => mod.default.mount(mountCtx, entry)).catch(() => {
+            render(body, el('div', { class: 'daily-empty', role: 'alert' }, el('p', {}, 'Could not reload the puzzle. Try again in a moment.')));
+          });
+        });
         return;
       }
 
@@ -188,8 +187,8 @@ export default {
     let finished = savedResult ? savedResult.finished : false;
     let won = savedResult ? savedResult.won : false;
     let streak = Number(store.get(storageKey('streak'), 0)) || 0;
-    const lastDate = store.get(storageKey('last-date'), '');
-    const lastIndex = Number(store.get(storageKey('last-index'), -1));
+    let lastDate = store.get(storageKey('last-date'), '');
+    let lastIndex = Number(store.get(storageKey('last-index'), -1));
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     if (lastDate !== today && (lastDate !== dateKey(yesterday) || lastIndex !== index - 1)) {
@@ -205,6 +204,17 @@ export default {
           if (serverStreak > streak) {
             streak = serverStreak;
             store.set(storageKey('streak'), streak);
+            // Keep the finishRound() guard in sync, or a win today would
+            // wrongly reset the just-synced streak to 1.
+            const wonRows = rows.filter((r) => r.mediaType === media.id && r.won === true);
+            if (wonRows.length) {
+              const latest = wonRows.reduce((a, b) => (b.dayIndex > a.dayIndex ? b : a));
+              const latestDate = new Date(latest.dayIndex * 86400000);
+              lastDate = dateKey(new Date(latestDate.getFullYear(), latestDate.getMonth(), latestDate.getDate()));
+              lastIndex = latest.dayIndex;
+              store.set(storageKey('last-date'), lastDate);
+              store.set(storageKey('last-index'), lastIndex);
+            }
             renderMeter();
           }
         })
@@ -301,6 +311,7 @@ export default {
 
     function kpi(label, value, options = {}) {
       const valueNode = el('strong', { class: 'kpi-value num' }, value);
+      if (options.flash) valueNode.dataset.flash = 'down';
       if (options.small) valueNode.append(el('small', {}, options.small));
       return el('div', { class: 'kpi' + (options.lead ? ' kpi--lead' : '') }, el('span', { class: 'kpi-label' }, label), valueNode);
     }
@@ -438,6 +449,13 @@ export default {
         pushGuessProgress({ mediaType: media.id, dayIndex: index, score: won ? currentScore() : 0, won });
       }
       renderGame();
+      // Input becomes disabled on finish; move focus to the result so
+      // keyboard/screen-reader users land on the outcome, not <body>.
+      const resultHeading = resultBox.querySelector('.daily-result-title');
+      if (resultHeading) {
+        resultHeading.tabIndex = -1;
+        resultHeading.focus();
+      }
       if (!saved) {
         setStatus(status, 'This browser could not save your result or streak.', 'warn');
       } else {

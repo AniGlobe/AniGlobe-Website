@@ -482,25 +482,32 @@ export default {
       });
 
       revokeAllButton.addEventListener('click', async () => {
+        revokeAllButton.disabled = true;
         try {
           await revokeAllSessions();
           window.location.hash = '#/card';
         } catch (error) {
           setStatus(status, error instanceof AuthError ? error.message : 'Could not sign out everywhere.', 'error');
+          revokeAllButton.disabled = false;
         }
       });
 
       resendButton.addEventListener('click', async () => {
+        resendButton.disabled = true;
         try {
           await resendVerification();
           setStatus(status, 'Confirmation email sent.', 'info');
         } catch (error) {
           setStatus(status, error instanceof AuthError ? error.message : 'Could not resend the email.', 'error');
+        } finally {
+          resendButton.disabled = false;
         }
       });
 
       changeForm.addEventListener('submit', async (event) => {
         event.preventDefault();
+        const btn = changeForm.querySelector('button[type="submit"]');
+        btn.disabled = true;
         try {
           await changePassword(currentPassword.value, newPassword.value);
           currentPassword.value = '';
@@ -508,40 +515,65 @@ export default {
           setStatus(status, 'Password changed. Your other sessions were signed out.', 'info');
         } catch (error) {
           setStatus(status, error instanceof AuthError ? error.message : 'Could not change the password.', 'error');
+        } finally {
+          btn.disabled = false;
         }
       });
 
       resetForm.addEventListener('submit', async (event) => {
         event.preventDefault();
+        const btn = resetForm.querySelector('button[type="submit"]');
+        btn.disabled = true;
         try {
           await requestPasswordReset(resetEmail.value.trim());
           setStatus(status, 'If that email has an account, a reset link is on its way.', 'info');
         } catch (error) {
           setStatus(status, error instanceof AuthError ? error.message : 'Could not request a reset.', 'error');
+        } finally {
+          btn.disabled = false;
         }
       });
 
       exportButton.addEventListener('click', async () => {
+        exportButton.disabled = true;
         try {
           await exportData();
           setStatus(status, 'Your data export downloaded.', 'info');
         } catch (error) {
           setStatus(status, error instanceof AuthError ? error.message : 'Could not export your data.', 'error');
+        } finally {
+          exportButton.disabled = false;
         }
       });
 
+      let deleteArmed = false;
       deleteButton.addEventListener('click', async () => {
         if (!confirmPassword.value) {
           setStatus(status, 'Enter your password to delete your account.', 'error');
           confirmPassword.focus();
           return;
         }
-        if (!window.confirm('Delete your AniGlobe account permanently?')) return;
+        if (!deleteArmed) {
+          deleteArmed = true;
+          deleteButton.textContent = 'Click again to confirm delete';
+          setStatus(status, 'Click “Delete my account” again within 30 seconds to confirm.', 'warn');
+          setTimeout(() => {
+            deleteArmed = false;
+            deleteButton.textContent = 'Delete my account';
+          }, 30000);
+          return;
+        }
+        deleteButton.disabled = true;
         try {
           await deleteAccount(confirmPassword.value);
           window.location.hash = '#/card';
         } catch (error) {
+          deleteArmed = false;
+          deleteButton.textContent = 'Delete my account';
           setStatus(status, error instanceof AuthError ? error.message : 'Could not delete the account.', 'error');
+        } finally {
+          confirmPassword.value = '';
+          deleteButton.disabled = false;
         }
       });
 

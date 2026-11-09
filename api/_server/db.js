@@ -463,8 +463,15 @@ export async function markEmailVerified(db, userId) {
 
 /* -------------------------------------------------------- reset / verify */
 
+export async function pruneExpiredTokens(db) {
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  await runWrite(db, 'DELETE FROM password_reset_tokens WHERE expires_at <= ? OR (used_at IS NOT NULL AND created_at <= ?)', [nowIso(), cutoff]);
+  await runWrite(db, 'DELETE FROM email_verification_tokens WHERE expires_at <= ? OR (used_at IS NOT NULL AND created_at <= ?)', [nowIso(), cutoff]);
+}
+
 export async function createResetToken(db, userId, tokenHash, expiresAt) {
   const at = nowIso();
+  await pruneExpiredTokens(db).catch(() => {});
   await db.batch([
     { sql: 'DELETE FROM password_reset_tokens WHERE user_id = ? AND used_at IS NULL', args: [userId] },
     { sql: 'INSERT INTO password_reset_tokens (user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)', args: [userId, tokenHash, at, expiresAt] },
@@ -481,6 +488,7 @@ export async function useResetToken(db, tokenHash) {
 
 export async function createVerifyToken(db, userId, tokenHash, expiresAt) {
   const at = nowIso();
+  await pruneExpiredTokens(db).catch(() => {});
   await db.batch([
     { sql: 'DELETE FROM email_verification_tokens WHERE user_id = ? AND used_at IS NULL', args: [userId] },
     { sql: 'INSERT INTO email_verification_tokens (user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)', args: [userId, tokenHash, at, expiresAt] },

@@ -47,8 +47,9 @@ export function serveStatic(req, res, pathname) {
     urlPath = '/security.txt';
   }
   const segments = urlPath.split('/').filter(Boolean);
-  const BLOCKED = new Set(['api', 'server', 'tests', 'node_modules', 'data']);
-  if (segments.some((s) => s.startsWith('.') || BLOCKED.has(s))) {
+  const BLOCKED = new Set(['api', 'server', 'tests', 'node_modules', 'data', 'scripts']);
+  const BLOCKED_FILES = new Set(['dev.js', 'vercel.json', 'package.json', 'package-lock.json', '.gitignore', '.vercelignore']);
+  if (segments.some((s) => s.startsWith('.') || BLOCKED.has(s) || BLOCKED_FILES.has(s))) {
     sendHttpError(res, new HttpError(404, 'Not found.'));
     return;
   }

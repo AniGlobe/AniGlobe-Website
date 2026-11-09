@@ -22,8 +22,9 @@ export default {
     });
     const list = el('ul', { class: 'library-list' });
     const themeFilter = el('div', { class: 'library-filters', role: 'group', 'aria-label': 'Filter by theme' });
-    const empty = el('p', { class: 'account-danger-note' }, 'No public templates yet. Publish one from the card studio to appear here.');
-    const noResults = el('p', { class: 'account-danger-note' }, 'No templates match your filters.');
+    const empty = el('p', { class: 'account-danger-note', hidden: true }, 'No public templates yet. Publish one from the card studio to appear here.');
+    const noResults = el('p', { class: 'account-danger-note', hidden: true }, 'No templates match your filters.');
+    const retryButton = el('button', { class: 'btn btn-outline btn-sm', type: 'button', hidden: true }, 'Retry');
 
     render(
       root,
@@ -41,28 +42,37 @@ export default {
         status,
         list,
         empty,
-        noResults
+        noResults,
+        retryButton
       )
     );
 
     let all = [];
     async function refresh() {
       setStatus(status, 'Loading library…', 'info');
+      retryButton.hidden = true;
       try {
         all = await listPublicTemplates();
         setStatus(status, '', 'info');
-      } catch {
+      } catch (error) {
         all = [];
-        setStatus(status, 'Could not load the library. Check your connection and try again.', 'error');
+        setStatus(status, error instanceof AuthError ? error.message : 'Could not load the library. Check your connection and try again.', 'error');
+        retryButton.hidden = false;
       }
       paint();
     }
+    retryButton.addEventListener('click', refresh);
 
     let activeTheme = '';
+    let lastFilterSig = '';
     function paintFilters() {
       // No hard-coded theme list: chips are derived from the templates
-      // actually present, plus an "All themes" reset.
+      // actually present, plus an "All themes" reset. Skip re-render when
+      // nothing changed so search keystrokes keep focus.
       const themes = [...new Set(all.map((t) => t.theme).filter(Boolean))].sort();
+      const sig = activeTheme + '|' + themes.join(',');
+      if (sig === lastFilterSig) return;
+      lastFilterSig = sig;
       render(
         themeFilter,
         el('button', { class: 'btn btn-sm ' + (!activeTheme ? 'btn-primary' : 'btn-quiet'), type: 'button', 'aria-pressed': String(!activeTheme), dataset: { theme: '' } }, 'All themes'),
@@ -113,7 +123,12 @@ export default {
       const button = event.target.closest('button[data-theme]');
       if (!button) return;
       activeTheme = button.dataset.theme || '';
+      lastFilterSig = '';
       paint();
+      const refocus = themeFilter.querySelector('button[data-theme="' + activeTheme + '"]');
+      if (refocus) refocus.focus();
+      const shown = all.filter((t) => !activeTheme || t.theme === activeTheme).length;
+      setStatus(status, shown + (shown === 1 ? ' template' : ' templates') + ' shown.', 'info');
     });
 
     search.addEventListener('input', paint);

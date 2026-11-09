@@ -72,7 +72,19 @@ export async function sendMail({ to, subject, text }) {
     transportWarned = true;
     process.stderr.write('[aniglobe-mail] console transport active: set MAIL_TRANSPORT=smtp (+ SMTP_*) to send real mail.\n');
   }
-  process.stderr.write(`[aniglobe-mail] ${JSON.stringify({ ...message })}\n`);
+  // Redact reset/verify URLs (which carry raw tokens) in logs; log only
+  // recipient + subject so prod logs never leak usable links.
+  const redacted = {
+    from: message.from,
+    replyTo: message.replyTo,
+    to: message.to,
+    subject: message.subject,
+    text: message.text.replace(/https?:\/\/[^\s]+/g, '[redacted-url]'),
+  };
+  process.stderr.write(`[aniglobe-mail] ${JSON.stringify(redacted)}\n`);
+  if (process.env.NODE_ENV === 'production') {
+    process.stderr.write('[aniglobe-mail] console transport is not for production — set MAIL_TRANSPORT=smtp.\n');
+  }
 }
 
 export function resetPasswordMail(to, resetUrl) {

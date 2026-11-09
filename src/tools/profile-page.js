@@ -41,6 +41,11 @@ export function renderProfile(root) {
   if (!username) {
     status.textContent = 'No username in this link. Profile links look like #/profile?u=yourname.';
     status.dataset.tone = 'error';
+    render(
+      content,
+      status,
+      el('p', { class: 'account-danger-note' }, el('a', { href: '#/library' }, 'Browse the library'), ' · ', el('a', { href: '#/card' }, 'Make your own card'))
+    );
     return;
   }
 
@@ -70,15 +75,15 @@ export function renderProfile(root) {
           el('p', { class: 'account-profile-name' }, '@' + profile.username, ' ', badge)
         ),
         profile.bio ? el('p', { class: 'account-profile-bio' }, profile.bio) : el('p', { class: 'account-danger-note' }, 'No bio yet.'),
-        el('p', { class: 'account-danger-note' }, 'Member since ' + new Date(profile.createdAt).toLocaleDateString()),
+        el('p', { class: 'account-danger-note' }, 'Member since ' + (Number.isNaN(Date.parse(profile.createdAt)) ? '—' : new Date(profile.createdAt).toLocaleDateString())),
         el(
           'div',
           { class: 'kpis account-history-kpis' },
-          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Played'), el('strong', { class: 'kpi-value num' }, String(profile.stats.gamesPlayed))),
-          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Wins'), el('strong', { class: 'kpi-value num' }, String(profile.stats.wins))),
-          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Win rate'), el('strong', { class: 'kpi-value num' }, String(profile.stats.winRate) + '%')),
-          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Streak'), el('strong', { class: 'kpi-value num' }, String(profile.stats.currentStreak != null ? profile.stats.currentStreak : 0))),
-          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Best'), el('strong', { class: 'kpi-value num' }, String(profile.stats.bestStreak != null ? profile.stats.bestStreak : 0)))
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Played'), el('strong', { class: 'kpi-value num' }, String((profile.stats && profile.stats.gamesPlayed) != null ? profile.stats.gamesPlayed : 0))),
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Wins'), el('strong', { class: 'kpi-value num' }, String((profile.stats && profile.stats.wins) != null ? profile.stats.wins : 0))),
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Win rate'), el('strong', { class: 'kpi-value num' }, String((profile.stats && profile.stats.winRate) != null ? profile.stats.winRate : 0) + '%')),
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Streak'), el('strong', { class: 'kpi-value num' }, String((profile.stats && profile.stats.currentStreak) != null ? profile.stats.currentStreak : 0))),
+          el('div', { class: 'kpi' }, el('span', { class: 'kpi-label' }, 'Best'), el('strong', { class: 'kpi-value num' }, String((profile.stats && profile.stats.bestStreak) != null ? profile.stats.bestStreak : 0)))
         )
       );
     })

@@ -26,11 +26,23 @@ function handler() {
       });
       return createRequestHandler({ db, api });
     })();
+    handlerPromise.catch(() => {
+      handlerPromise = null;
+    });
   }
   return handlerPromise;
 }
 
 export default async function apiHandler(req, res) {
-  const requestHandler = await handler();
-  await requestHandler(req, res);
+  try {
+    const requestHandler = await handler();
+    await requestHandler(req, res);
+  } catch (error) {
+    if (!res.headersSent) {
+      res.writeHead(error.status || 503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Service unavailable.' }));
+    } else if (!res.writableEnded) {
+      res.end();
+    }
+  }
 }

@@ -283,12 +283,9 @@ export async function setTemplatePublic(name, isPublic) {
 }
 
 export async function listPublicTemplates() {
-  try {
-    const { status, json } = await request('/api/templates/public');
-    return status === 200 && json && Array.isArray(json.templates) ? json.templates : [];
-  } catch {
-    return [];
-  }
+  const { status, json } = await request('/api/templates/public');
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not load the library.', json && json.details);
+  return json && Array.isArray(json.templates) ? json.templates : [];
 }
 
 export async function usePublicTemplate(id) {
