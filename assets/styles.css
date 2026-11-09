@@ -1990,43 +1990,24 @@ html.wrapped-dialog-open { overflow: hidden; }
 /* Field-level errors (auth dialog polish) */
 .field-error { color: var(--pill-negative-ink); font-size: var(--fs-small); line-height: 1.5; margin: 0; }
 
-/* Standalone homepage — playful yet elegant */
-.home { width: 100%; max-width: 1080px; margin-inline: auto; display: grid; gap: var(--s6); }
+/* Standalone homepage: playful yet elegant, one glow, focused hero */
+.home { width: 100%; max-width: 860px; margin-inline: auto; display: grid; gap: var(--s5); }
 .home-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s5);
-  align-items: center;
   padding: var(--s7) var(--s6);
   border-radius: 24px;
   background:
-    radial-gradient(560px circle at 18% 0%, rgba(59, 130, 246, 0.18), transparent 60%),
-    radial-gradient(460px circle at 88% 32%, rgba(246, 115, 140, 0.12), transparent 60%),
+    radial-gradient(560px circle at 50% 0%, rgba(59, 130, 246, 0.16), transparent 60%),
     var(--surface);
   border: 1px solid var(--border);
-  position: relative;
-  overflow: hidden;
+  text-align: center;
 }
-.home-hero-copy { display: grid; gap: var(--s3); justify-items: start; }
+.home-hero-copy { display: grid; gap: var(--s3); justify-items: center; }
+.home-hero-solo { justify-items: center; }
 .home-title { font-size: clamp(32px, 5vw, 56px); font-weight: 650; letter-spacing: -0.035em; line-height: 1.02; }
 .home-cta-lg { min-height: 48px; padding: 0 var(--s5); font-size: 15px; }
-.home-hero-note { color: var(--faint); font-size: var(--fs-small); }
-.home-hero-visual { display: grid; gap: var(--s2); transform: rotate(-2deg); }
-.home-visual-card {
-  display: grid; place-items: center;
-  min-height: 84px;
-  padding: var(--s3);
-  border-radius: var(--radius-card);
-  background: var(--raised);
-  border: 1px solid var(--border);
-  font-weight: 600;
-  font-size: var(--fs-section);
-  transition: transform var(--t-ui) var(--ease-out), border-color var(--t-hover) ease;
-}
-.home-visual-card:hover { transform: translateY(-3px); border-color: var(--control); }
-.home-visual-card-a { margin-left: 0; }
-.home-visual-card-b { margin-left: var(--s5); background: var(--accent); color: var(--ground); border-color: transparent; }
-.home-visual-card-c { margin-left: var(--s2); }
 .home-section { display: grid; gap: var(--s3); }
 .home-h2 { font-size: var(--fs-title); font-weight: 650; letter-spacing: -0.02em; }
 .home-section-lead { color: var(--muted); font-size: var(--fs-small); }
@@ -2046,26 +2027,12 @@ html.wrapped-dialog-open { overflow: hidden; }
 .home-feature-label { font-weight: 600; font-size: var(--fs-body); }
 .home-feature-desc { color: var(--muted); font-size: var(--fs-small); line-height: 1.5; }
 .home-feature-arrow { color: var(--accent); font-weight: 700; }
-.home-teaser-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--s3); }
-.home-teaser-card {
-  display: grid; gap: var(--s1);
-  padding: var(--s4);
-  border-radius: var(--radius-card);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  transition: transform var(--t-ui) var(--ease-out), border-color var(--t-hover) ease;
-}
-.home-teaser-card:hover { transform: translateY(-3px); border-color: var(--control); }
 @media (max-width: 760px) {
-  .home-hero { grid-template-columns: minmax(0, 1fr); padding: var(--s5); }
-  .home-hero-visual { grid-template-columns: repeat(3, minmax(0, 1fr)); transform: none; }
-  .home-visual-card { min-height: 64px; font-size: var(--fs-small); }
-  .home-visual-card-b { margin-left: 0; }
-  .home-visual-card-c { margin-left: 0; }
+  .home-hero { padding: var(--s5); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .home-visual-card, .home-feature-card, .home-teaser-card { transition: none; }
-  .home-visual-card:hover, .home-feature-card:hover, .home-teaser-card:hover { transform: none; }
+  .home-feature-card { transition: none; }
+  .home-feature-card:hover { transform: none; }
 }
 
 /* Standalone auth + onboarding pages */
