@@ -24,7 +24,10 @@ export function renderHome(root) {
   const browseCta = el(
     'div',
     { class: 'home-browse-wrap' },
-    el('a', { class: 'btn btn-primary home-browse-btn', href: '#/tools' }, 'Browse Tools')
+    el('a', { class: 'btn btn-primary home-browse-btn', href: '#/tools' },
+      el('span', { class: 'home-browse-grid', 'aria-hidden': 'true' }, el('i', {}), el('i', {}), el('i', {}), el('i', {})),
+      el('span', {}, 'Browse Tools')
+    )
   );
 
   const hero = el(
