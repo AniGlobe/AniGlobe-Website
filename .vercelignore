@@ -1,6 +1,8 @@
 # Vercel deployment ignores — keep anything non-public out of the upload.
-# (package.json / package-lock.json are NOT ignored: Vercel needs them to
-# install dependencies for functions.)
+# (package.json is NOT ignored: Vercel needs it to install dependencies
+# for functions. It is blocked from public access via vercel.json rewrites.
+# vercel.json is read by the CLI at deploy time, so ignoring it here only
+# stops it from being served as a static file.)
 tests
 artifacts
 data
@@ -9,11 +11,14 @@ data
 .env
 .env.*
 *.md
+*.txt
 .DS_Store
 node_modules
-probe-*.mjs
-tmp-probe*
 dev.js
+opencode.json
+skills-lock.json
 vercel.json
 package-lock.json
+probe-*.mjs
+tmp-probe*
 *.db

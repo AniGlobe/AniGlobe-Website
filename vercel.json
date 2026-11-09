@@ -5,6 +5,7 @@
     "api/index.js": { "memory": 1024, "maxDuration": 60 }
   },
   "rewrites": [
+    { "source": "/package.json", "destination": "/404" },
     { "source": "/api/(.*)", "destination": "/api/index" }
   ],
   "headers": [
