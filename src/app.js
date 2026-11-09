@@ -95,8 +95,8 @@ function renderTopbarAuth() {
       });
   } else {
     actions.push(
-      el('a', { class: 'btn btn-outline btn-sm', href: '#/login' }, 'Log in'),
-      el('a', { class: 'btn btn-primary btn-sm', href: '#/signup' }, 'Create account')
+      el('a', { class: 'btn btn-outline btn-sm', href: '#/login' }, 'Log In'),
+      el('a', { class: 'btn btn-primary btn-sm', href: '#/signup' }, 'Create Account')
     );
   }
   render(dom.topbarActions, ...actions);

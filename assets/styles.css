@@ -2007,6 +2007,18 @@ html.wrapped-dialog-open { overflow: hidden; }
 .home-hero-copy { display: grid; gap: var(--s3); justify-items: start; }
 .home-title { font-size: clamp(32px, 5vw, 56px); font-weight: 650; letter-spacing: -0.035em; line-height: 1.02; }
 .home-cta-lg { min-height: 48px; padding: 0 var(--s5); font-size: 15px; }
+.home-browse-wrap { display: grid; justify-items: center; padding: var(--s4) 0 var(--s2); }
+.home-browse-btn {
+  min-height: 56px;
+  padding: 0 var(--s6);
+  font-size: 16px;
+  font-weight: 650;
+  border-radius: 999px;
+  box-shadow: 0 12px 32px rgba(59, 130, 246, 0.22);
+  transition: transform var(--t-ui) var(--ease-out), box-shadow var(--t-hover) ease, background var(--t-hover) ease;
+}
+.home-browse-btn:hover { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(59, 130, 246, 0.3); }
+.home-browse-btn:active { transform: translateY(0) scale(0.98); }
 .home-hero-visual { display: grid; gap: var(--s2); transform: rotate(-2deg); }
 .home-visual-card {
   display: grid; place-items: center;
@@ -2039,22 +2051,25 @@ html.wrapped-dialog-open { overflow: hidden; }
 .home-feature-label { font-weight: 600; font-size: var(--fs-body); }
 .home-feature-desc { color: var(--muted); font-size: var(--fs-small); line-height: 1.5; }
 .home-feature-arrow { color: var(--accent); font-weight: 700; }
-.home-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--s3); }
+.home-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: var(--s3); }
 .home-tile {
-  display: grid; gap: var(--s2); justify-items: center;
-  padding: var(--s4) var(--s3);
-  border-radius: 18px; background: var(--surface); border: 1px solid var(--border);
-  transition: transform var(--t-ui) var(--ease-out), border-color var(--t-hover) ease, background var(--t-hover) ease;
+  display: grid; gap: var(--s3); justify-items: center;
+  padding: var(--s5) var(--s3);
+  border-radius: 22px; background: var(--surface); border: 1px solid var(--border);
+  transition: transform var(--t-ui) var(--ease-out), border-color var(--t-hover) ease, background var(--t-hover) ease, box-shadow var(--t-hover) ease;
 }
-.home-tile:hover { transform: translateY(-3px); border-color: var(--control); background: var(--raised); }
+.home-tile:hover { transform: translateY(-4px); border-color: var(--control); background: var(--raised); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35); }
 .home-tile-icon {
   display: grid; place-items: center;
-  width: 56px; height: 56px; border-radius: 16px;
-  background: var(--raised); color: var(--text);
-  font-size: 24px; font-weight: 650;
+  width: 64px; height: 64px; border-radius: 20px;
+  background: linear-gradient(145deg, var(--raised), var(--surface));
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 26px; font-weight: 700;
+  transition: background var(--t-hover) ease, color var(--t-hover) ease, transform var(--t-hover) ease;
 }
-.home-tile:hover .home-tile-icon { background: var(--accent); color: var(--ground); }
-.home-tile-label { font-size: var(--fs-small); font-weight: 600; text-align: center; }
+.home-tile:hover .home-tile-icon { background: var(--accent); color: var(--ground); border-color: transparent; transform: scale(1.05); }
+.home-tile-label { font-size: var(--fs-small); font-weight: 600; text-align: center; line-height: 1.3; }
 .home-tiles-cta { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: center; margin-top: var(--s2); }
 @media (max-width: 760px) {
   .home-hero { grid-template-columns: minmax(0, 1fr); padding: var(--s5); }

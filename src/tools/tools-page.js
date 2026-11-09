@@ -32,7 +32,7 @@ export function renderToolsPage(root) {
       el('div', { class: 'home-tiles' }, ...tiles),
       el('p', { class: 'home-tiles-cta' },
         el('a', { class: 'btn btn-quiet btn-sm', href: '#/home' }, 'Back to home'),
-        session ? null : el('a', { class: 'btn btn-primary btn-sm', href: '#/signup' }, 'Create free account')
+        session ? null : el('a', { class: 'btn btn-primary btn-sm', href: '#/signup' }, 'Create Account')
       )
     )
   );

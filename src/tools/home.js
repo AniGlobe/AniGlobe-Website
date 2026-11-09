@@ -11,17 +11,21 @@ import { getSession } from '../auth.js';
 export function renderHome(root) {
   const session = getSession();
 
+  // Logged-in hero shows a single "My Account" action (per direction).
+  // Browse Tools lives at the page bottom as its own launcher button.
   const heroCtas = session
     ? [
-        el('a', { class: 'btn btn-primary home-cta-lg', href: '#/tools' }, 'Browse Tools'),
-        el('a', { class: 'btn btn-outline home-cta-lg', href: '#/card' }, 'Open Wrapped'),
-        el('a', { class: 'btn btn-quiet', href: '#/account' }, 'My account'),
+        el('a', { class: 'btn btn-primary home-cta-lg', href: '#/account' }, 'My Account'),
       ]
     : [
-        el('a', { class: 'btn btn-primary home-cta-lg', href: '#/tools' }, 'Browse Tools'),
-        el('a', { class: 'btn btn-outline home-cta-lg', href: '#/signup' }, 'Create free account'),
-        el('a', { class: 'btn btn-quiet', href: '#/login' }, 'Log in'),
+        el('a', { class: 'btn btn-primary home-cta-lg', href: '#/signup' }, 'Create Account'),
+        el('a', { class: 'btn btn-outline home-cta-lg', href: '#/login' }, 'Log In'),
       ];
+  const browseCta = el(
+    'div',
+    { class: 'home-browse-wrap' },
+    el('a', { class: 'btn btn-primary home-browse-btn', href: '#/tools' }, 'Browse Tools')
+  );
 
   const hero = el(
     'section',
@@ -40,5 +44,5 @@ export function renderHome(root) {
     )
   );
 
-  render(root, el('div', { class: 'home' }, hero));
+  render(root, el('div', { class: 'home' }, hero, browseCta));
 }
