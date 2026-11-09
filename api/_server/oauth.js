@@ -31,9 +31,19 @@ let configPromise = null;
 async function getConfig() {
   if (!configPromise) {
     configPromise = (async () => {
-      const { discovery } = await import('openid-client');
-      return discovery(GOOGLE_ISSUER, process.env.GOOGLE_CLIENT_ID);
+      const { discovery, ClientSecretPost } = await import('openid-client');
+      // v6 discovery expects a URL object and client auth; a string issuer
+      // throws "server must be an instance of URL".
+      return discovery(
+        new URL(GOOGLE_ISSUER),
+        process.env.GOOGLE_CLIENT_ID,
+        {},
+        ClientSecretPost(process.env.GOOGLE_CLIENT_SECRET)
+      );
     })();
+    configPromise.catch(() => {
+      configPromise = null;
+    });
   }
   return configPromise;
 }
@@ -57,7 +67,6 @@ export async function exchangeGoogleCode(redirectUri, { code, codeVerifier }) {
   const tokens = await authorizationCodeGrant(config, redirectUri, {
     code,
     code_verifier: codeVerifier,
-    client_secret: process.env.GOOGLE_CLIENT_SECRET,
   });
   const userinfo = await fetchUserInfo(config, tokens.access_token, 'sub');
   return userinfo;
