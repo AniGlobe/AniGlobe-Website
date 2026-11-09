@@ -26,6 +26,8 @@ export default {
     const noResults = el('p', { class: 'account-danger-note', hidden: true }, 'No templates match your filters.');
     const retryButton = el('button', { class: 'btn btn-outline btn-sm', type: 'button', hidden: true }, 'Retry');
     const studioCta = el('p', { hidden: true }, el('a', { class: 'btn btn-primary btn-sm', href: '#/card' }, 'Open card studio'));
+    const moreButton = el('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, 'Load more');
+    const LIBRARY_PAGE = 20;
 
     render(
       root,
@@ -45,25 +47,43 @@ export default {
         list,
         empty,
         noResults,
-        retryButton
+        retryButton,
+        moreButton
       )
     );
 
     let all = [];
+    let loaded = 0;
     async function refresh() {
       setStatus(status, 'Loading library…', 'info');
       retryButton.hidden = true;
       try {
-        all = await listPublicTemplates();
+        all = await listPublicTemplates({ limit: LIBRARY_PAGE, offset: 0 });
+        loaded = all.length;
         setStatus(status, '', 'info');
       } catch (error) {
         all = [];
+        loaded = 0;
         setStatus(status, error instanceof AuthError ? error.message : 'Could not load the library. Check your connection and try again.', 'error');
         retryButton.hidden = false;
       }
       paint();
     }
     retryButton.addEventListener('click', refresh);
+    moreButton.addEventListener('click', async () => {
+      moreButton.disabled = true;
+      try {
+        const next = await listPublicTemplates({ limit: LIBRARY_PAGE, offset: loaded });
+        all = [...all, ...next];
+        loaded += next.length;
+        moreButton.hidden = next.length < LIBRARY_PAGE;
+        paint();
+      } catch (error) {
+        setStatus(status, error instanceof AuthError ? error.message : 'Could not load more templates.', 'error');
+      } finally {
+        moreButton.disabled = false;
+      }
+    });
 
     let activeTheme = '';
     let lastFilterSig = '';
@@ -93,6 +113,7 @@ export default {
       );
       empty.hidden = !(all.length === 0 && !query && !activeTheme);
       noResults.hidden = !((query || activeTheme) && filtered.length === 0 && all.length > 0);
+      moreButton.hidden = !(loaded >= all.length && all.length >= LIBRARY_PAGE);
       render(
         list,
         ...filtered.map((template) => {

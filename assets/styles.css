@@ -1805,6 +1805,10 @@ html.wrapped-dialog-open { overflow: hidden; }
 
 .auth-dialog-foot { padding: var(--s2) var(--s5) 0; text-align: center; }
 .auth-mode-toggle { color: var(--accent); font-weight: 500; }
+.auth-google { width: calc(100% - var(--s5) * 2); margin: var(--s3) var(--s5) 0; }
+.account-oauth-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.account-oauth-actions[hidden] { display: none; }
+.account-oauth-actions .btn { max-width: none; }
 
 .account-panel { display: grid; gap: var(--s4); }
 .account-panel .panel-title { margin-bottom: 0; }
@@ -1921,6 +1925,9 @@ html.wrapped-dialog-open { overflow: hidden; }
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+.account-profile-gallery { margin-top: var(--s4); text-align: left; }
+.account-profile-gallery-list { display: grid; gap: var(--s1); margin-top: var(--s2); padding: 0; list-style: none; }
+.account-profile-gallery-list li { font-size: var(--fs-small); color: var(--muted); }
 
 /* Topbar account menu: circle avatar + dropdown (Profile / Log out) */
 .topbar-account-menu { position: relative; }

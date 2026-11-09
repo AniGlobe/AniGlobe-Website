@@ -119,6 +119,25 @@ export async function deleteAccount(password) {
   setSession(null);
 }
 
+export async function listAuthProviders() {
+  try {
+    const { status, json } = await request('/api/auth/oauth/providers');
+    return status === 200 && json && Array.isArray(json.providers) ? json.providers : [];
+  } catch {
+    return [];
+  }
+}
+
+export function googleStartUrl(mode) {
+  return '/api/auth/oauth/google/start' + (mode === 'link' ? '?mode=link' : '');
+}
+
+export async function unlinkGoogle(password) {
+  const { status, json } = await request('/api/auth/oauth/google', { method: 'DELETE', body: { password } });
+  if (status >= 400) throw new AuthError((json && json.error) || 'Could not unlink Google.', json && json.details);
+  return true;
+}
+
 export async function getProfile() {
   if (!getSession()) return null;
   const { status, json } = await request('/api/auth/profile');
@@ -282,8 +301,8 @@ export async function setTemplatePublic(name, isPublic) {
   return true;
 }
 
-export async function listPublicTemplates() {
-  const { status, json } = await request('/api/templates/public');
+export async function listPublicTemplates({ limit = 50, offset = 0 } = {}) {
+  const { status, json } = await request('/api/templates/public?limit=' + encodeURIComponent(limit) + '&offset=' + encodeURIComponent(offset));
   if (status >= 400) throw new AuthError((json && json.error) || 'Could not load the library.', json && json.details);
   return json && Array.isArray(json.templates) ? json.templates : [];
 }

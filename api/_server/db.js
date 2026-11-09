@@ -159,6 +159,29 @@ const MIGRATIONS = [
       'CREATE INDEX IF NOT EXISTS template_likes_template_idx ON template_likes (template_id)',
     ];
   },
+  async (db) => {
+    const statements = [];
+    if (!(await hasColumn(db, 'users', 'oauth_provider'))) {
+      statements.push('ALTER TABLE users ADD COLUMN oauth_provider TEXT');
+    }
+    if (!(await hasColumn(db, 'users', 'oauth_subject'))) {
+      statements.push('ALTER TABLE users ADD COLUMN oauth_subject TEXT');
+    }
+    statements.push('CREATE UNIQUE INDEX IF NOT EXISTS users_oauth_subject_unique ON users (oauth_provider, oauth_subject) WHERE oauth_provider IS NOT NULL AND oauth_subject IS NOT NULL');
+    statements.push(
+      `CREATE TABLE IF NOT EXISTS oauth_states (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        state_hash TEXT NOT NULL UNIQUE,
+        code_verifier TEXT NOT NULL,
+        user_id INTEGER REFERENCES users (id) ON DELETE CASCADE,
+        mode TEXT NOT NULL DEFAULT 'login',
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT
+      )`
+    );
+    return statements;
+  },
 ];
 
 function nowIso() {
@@ -263,6 +286,30 @@ export async function updateUserPassword(db, id, passwordHash) {
 
 export async function updateProfile(db, id, { bio, avatarData }) {
   await runWrite(db, 'UPDATE users SET bio = ?, avatar_data = ?, updated_at = ? WHERE id = ?', [bio, avatarData, nowIso(), id]);
+}
+
+export async function getUserByOAuth(db, provider, subject) {
+  return getRow(db, 'SELECT * FROM users WHERE oauth_provider = ? AND oauth_subject = ?', [provider, subject]);
+}
+
+export async function linkOAuth(db, userId, provider, subject) {
+  await runWrite(db, 'UPDATE users SET oauth_provider = ?, oauth_subject = ?, updated_at = ? WHERE id = ?', [provider, subject, nowIso(), userId]);
+}
+
+export async function unlinkOAuth(db, userId) {
+  await runWrite(db, 'UPDATE users SET oauth_provider = NULL, oauth_subject = NULL, updated_at = ? WHERE id = ?', [nowIso(), userId]);
+}
+
+export async function createOAuthState(db, { stateHash, codeVerifier, userId, mode, expiresAt }) {
+  await runWrite(db, 'INSERT INTO oauth_states (state_hash, code_verifier, user_id, mode, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)', [stateHash, codeVerifier, userId != null ? userId : null, mode, nowIso(), expiresAt]);
+}
+
+export async function findOAuthState(db, stateHash) {
+  return getRow(db, 'SELECT * FROM oauth_states WHERE state_hash = ?', [stateHash]);
+}
+
+export async function useOAuthState(db, stateHash) {
+  await runWrite(db, 'UPDATE oauth_states SET used_at = ? WHERE state_hash = ?', [nowIso(), stateHash]);
 }
 
 export async function guessSummary(db, userId) {
@@ -403,15 +450,17 @@ export async function setTemplatePublic(db, userId, name, isPublic) {
   return Number(result.rowsAffected) > 0;
 }
 
-export async function listPublicTemplates(db, { limit = 50, viewerId = null } = {}) {
+export async function listPublicTemplates(db, { limit = 50, offset = 0, viewerId = null } = {}) {
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+  const safeOffset = Math.max(0, Number(offset) || 0);
   const rows = await getRows(db, `
     SELECT templates.id, templates.name, templates.payload, templates.updated_at, users.username AS author,
            (SELECT COUNT(*) FROM template_likes WHERE template_id = templates.id) AS like_count,
            (? IS NOT NULL AND EXISTS (SELECT 1 FROM template_likes WHERE user_id = ? AND template_id = templates.id)) AS loved
     FROM templates JOIN users ON users.id = templates.user_id
     WHERE templates.is_public = 1
-    ORDER BY templates.updated_at DESC LIMIT ?
-  `, [viewerId != null ? viewerId : null, viewerId != null ? viewerId : null, limit]);
+    ORDER BY templates.updated_at DESC LIMIT ? OFFSET ?
+  `, [viewerId != null ? viewerId : null, viewerId != null ? viewerId : null, safeLimit, safeOffset]);
   return rows.map((row) => {
     let payload = {};
     try {

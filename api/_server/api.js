@@ -28,6 +28,7 @@ import {
 } from './http.js';
 import { hashPassword, verifyPassword, dummyVerify } from './passwords.js';
 import { resetPasswordMail, verifyEmailMail, sendMail, originOf } from './mail.js';
+import { googleEnabled, GOOGLE_PROVIDER, callbackUrl, googleAuthorizationUrl, exchangeGoogleCode } from './oauth.js';
 import { currentStreak, bestStreak } from '../../src/domain/streak.js';
 import {
   createResetToken,
@@ -62,6 +63,12 @@ import {
   listPublicTemplates,
   getPublicTemplateById,
   setTemplateLike,
+  getUserByOAuth,
+  linkOAuth,
+  unlinkOAuth,
+  createOAuthState,
+  findOAuthState,
+  useOAuthState,
   upsertTemplate,
   useResetToken,
   useVerifyToken,
@@ -90,6 +97,7 @@ function publicUser(user) {
     email: user.email,
     createdAt: user.created_at,
     verified: Boolean(user.email_verified_at),
+    oauthProvider: user.oauth_provider || null,
   };
 }
 
@@ -158,7 +166,7 @@ async function destroySession(db, req, res) {
  * Build the API router. dependencies: { db, authLimiters } — split out so the
  * server entry and the tests construct the same routes the same way.
  */
-export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimiter, mailer = sendMail }) {
+export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimiter, mailer = sendMail, oauth = null }) {
 
   function mailVerifyToken(req, user, token) {
     const url = `${originOf(req)}#/verify?token=${encodeURIComponent(token)}`;
@@ -373,6 +381,130 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     json(res, 200, { ok: true });
   }
 
+  const OAUTH_STATE_LIFETIME_MS = 10 * 60 * 1000;
+
+  function oauthProviders() {
+    if (oauth) return [{ provider: GOOGLE_PROVIDER, enabled: true }];
+    return [{ provider: GOOGLE_PROVIDER, enabled: googleEnabled() }];
+  }
+
+  async function oauthProvidersRoute(req, res) {
+    json(res, 200, { providers: oauthProviders() });
+  }
+
+  async function oauthStart(req, res) {
+    if (!oauth && !googleEnabled()) throw new HttpError(501, 'Google sign-in is not configured.');
+    const url = new URL(req.url, 'http://placeholder');
+    const mode = url.searchParams.get('mode') === 'link' ? 'link' : 'login';
+    const { randomBytes, createHash } = await import('node:crypto');
+    const verifier = randomBytes(32).toString('base64url');
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const state = randomBytes(32).toString('base64url');
+    const stateHash = createHash('sha256').update(state).digest('hex');
+    const expiresAt = new Date(Date.now() + OAUTH_STATE_LIFETIME_MS).toISOString();
+    let linkedUserId = null;
+    if (mode === 'link') {
+      const { user } = await requireSession(db, req);
+      linkedUserId = user.id;
+    }
+    await createOAuthState(db, { stateHash, codeVerifier: verifier, userId: linkedUserId, mode, expiresAt });
+    const redirectUri = callbackUrl(req);
+    const authUrl = oauth && typeof oauth.authorizationUrl === 'function'
+      ? await oauth.authorizationUrl({ redirectUri, state, codeChallenge: challenge })
+      : await googleAuthorizationUrl(redirectUri, { state, codeChallenge: challenge });
+    res.writeHead(302, { Location: authUrl, 'Cache-Control': 'no-store' });
+    res.end();
+  }
+
+  async function oauthCallback(req, res) {
+    const url = new URL(req.url, 'http://placeholder');
+    const code = String(url.searchParams.get('code') || '');
+    const state = String(url.searchParams.get('state') || '');
+    const done = (ok) => {
+      const target = originOf(req) + '#/account?oauth=' + (ok ? 'ok' : 'error');
+      res.writeHead(302, { Location: target, 'Cache-Control': 'no-store' });
+      res.end();
+    };
+    if (!code || !state) return done(false);
+    const { createHash } = await import('node:crypto');
+    const row = await findOAuthState(db, createHash('sha256').update(state).digest('hex'));
+    if (!row || row.used_at !== null || row.expires_at < new Date().toISOString()) {
+      logEvent('oauth_callback_failed', { reason: row ? 'expired_or_used' : 'unknown_state' });
+      return done(false);
+    }
+    await useOAuthState(db, createHash('sha256').update(state).digest('hex'));
+    let info;
+    try {
+      const redirectUri = callbackUrl(req);
+      info = oauth && typeof oauth.exchange === 'function'
+        ? await oauth.exchange({ redirectUri, code, codeVerifier: row.code_verifier })
+        : await exchangeGoogleCode(redirectUri, { code, codeVerifier: row.code_verifier });
+    } catch (error) {
+      logEvent('oauth_exchange_failed', { error: error && error.message ? String(error.message).slice(0, 80) : 'unknown' });
+      return done(false);
+    }
+    const sub = String(info.sub || '');
+    const email = String(info.email || '').toLowerCase();
+    const emailVerified = info.email_verified === true || info.email_verified === 'true';
+    if (!sub || !email) return done(false);
+
+    if (row.mode === 'link' && row.user_id) {
+      const target = await getUserById(db, row.user_id);
+      if (!target) return done(false);
+      if (target.oauth_subject && target.oauth_subject !== sub) return done(false);
+      await linkOAuth(db, target.id, GOOGLE_PROVIDER, sub);
+      logEvent('oauth_linked', { userId: target.id });
+      return done(true);
+    }
+    let user = await getUserByOAuth(db, GOOGLE_PROVIDER, sub);
+    if (user) {
+      await issueSession(db, req, res, user);
+      logEvent('oauth_login', { userId: user.id });
+      return done(true);
+    }
+    user = await getUserByEmail(db, email);
+    if (user) {
+      if (!emailVerified && !user.email_verified_at) return done(false);
+      await linkOAuth(db, user.id, GOOGLE_PROVIDER, sub);
+      if (emailVerified) await markEmailVerified(db, user.id);
+      await issueSession(db, req, res, user);
+      logEvent('oauth_linked_login', { userId: user.id });
+      return done(true);
+    }
+    const base = email.split('@')[0].replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 24) || 'user';
+    let username = base;
+    let suffix = 1;
+    while (await getUserByUsername(db, username)) {
+      suffix += 1;
+      username = (base + suffix).slice(0, 32);
+    }
+    const placeholderHash = hashPassword(randomToken(32));
+    user = await createUser(db, { username, email, passwordHash: placeholderHash });
+    await linkOAuth(db, user.id, GOOGLE_PROVIDER, sub);
+    if (emailVerified) await markEmailVerified(db, user.id);
+    const vt = await issueVerifyToken({ headers: {} }, user);
+    await mailVerifyToken(req, user, vt).catch(() => {});
+    await issueSession(db, req, res, user);
+    logEvent('oauth_registered', { userId: user.id });
+    return done(true);
+  }
+
+  async function oauthUnlink(req, res) {
+    requireCsrf(req);
+    const { user } = await requireSession(db, req);
+    if (!user.oauth_provider) throw new HttpError(400, 'Google sign-in is not linked.');
+    // Unlink always requires the account password, so an OAuth-only account
+    // (placeholder hash) can never be unlinked into a lockout.
+    const body = await readJsonBody(req);
+    const password = body && body.password != null ? String(body.password) : '';
+    if (!password || !verifyPassword(password, user.password_hash)) {
+      throw new HttpError(403, 'Enter your password to unlink Google.', { field: 'password' });
+    }
+    await unlinkOAuth(db, user.id);
+    logEvent('oauth_unlinked', { userId: user.id });
+    json(res, 200, { ok: true });
+  }
+
   async function listSessions(req, res) {
     const { user, session } = await requireSession(db, req);
     const rows = await listSessionsForUser(db, user.id);
@@ -474,6 +606,11 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     const nowDate = new Date();
     const localMidnight = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
     const todayIndex = Math.floor(localMidnight.getTime() / 86400000);
+    const ownTemplates = await listTemplates(db, user.id);
+    const gallery = ownTemplates
+      .filter((t) => t.isPublic === true)
+      .slice(0, 12)
+      .map((t) => ({ name: t.name, theme: typeof t.payload?.theme === 'string' ? t.payload.theme : null, layout: t.payload?.layout === 'story' ? 'story' : 'square', updatedAt: t.updatedAt }));
     return {
       username: user.username,
       createdAt: user.created_at,
@@ -487,6 +624,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
         currentStreak: currentStreak(progress, { todayIndex }),
         bestStreak: bestStreak(progress),
       },
+      gallery,
     };
   }
 
@@ -529,6 +667,11 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       if (!name || name.length > 64) throw new HttpError(400, 'Template names need 1–64 characters.', { field: 'name' });
       if (!body.payload || typeof body.payload !== 'object') throw new HttpError(400, 'Template payload must be a JSON object.');
       if (Buffer.byteLength(JSON.stringify(body.payload)) > 128 * 1024) throw new HttpError(413, 'Template is too large.');
+      const existing = await listTemplates(db, user.id);
+      const isNew = !existing.some((t) => t.name.toLowerCase() === name.toLowerCase());
+      if (isNew && existing.length >= 50) {
+        throw new HttpError(409, 'Template limit reached (50). Delete one to save another.', { field: 'name' });
+      }
       await upsertTemplate(db, user.id, { name, payload: body.payload });
       json(res, 200, { ok: true, name });
       return;
@@ -559,7 +702,10 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     // Viewer is optional so guests still load it; logged-in users get `loved`.
     const resolved = await resolveSession(db, req);
     const viewerId = resolved ? resolved.user.id : null;
-    json(res, 200, { templates: await listPublicTemplates(db, { limit: 50, viewerId }) });
+    const url = new URL(req.url, 'http://placeholder');
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 50));
+    const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+    json(res, 200, { templates: await listPublicTemplates(db, { limit, offset, viewerId }) });
   }
 
   async function lovePublicTemplate(req, res, id) {
@@ -628,6 +774,10 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     ['/api/auth/password-reset/confirm', { POST: resetConfirm }],
     ['/api/auth/verify/confirm', { POST: verifyConfirm }],
     ['/api/auth/verify/resend', { POST: verifyResend }],
+    ['/api/auth/oauth/providers', { GET: oauthProvidersRoute }],
+    ['/api/auth/oauth/google/start', { GET: oauthStart }],
+    ['/api/auth/oauth/google/callback', { GET: oauthCallback }],
+    ['/api/auth/oauth/google', { DELETE: oauthUnlink }],
     ['/api/auth/sessions', { GET: listSessions }],
     ['/api/auth/sessions/revoke-all', { POST: revokeAllSessions }],
     ['/api/auth/export', { GET: dataExport }],

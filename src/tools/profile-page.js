@@ -76,6 +76,18 @@ export function renderProfile(root) {
         ),
         profile.bio ? el('p', { class: 'account-profile-bio' }, profile.bio) : el('p', { class: 'account-danger-note' }, 'No bio yet.'),
         el('p', { class: 'account-danger-note' }, 'Member since ' + (Number.isNaN(Date.parse(profile.createdAt)) ? '—' : new Date(profile.createdAt).toLocaleDateString())),
+        profile.gallery && profile.gallery.length
+          ? el(
+              'div',
+              { class: 'account-profile-gallery' },
+              el('h3', { class: 'panel-title' }, 'Public templates'),
+              el(
+                'ul',
+                { class: 'account-profile-gallery-list' },
+                ...profile.gallery.map((t) => el('li', {}, t.name + (t.theme ? ' · ' + t.theme : '') + ' · ' + t.layout))
+              )
+            )
+          : null,
         el(
           'div',
           { class: 'kpis account-history-kpis' },

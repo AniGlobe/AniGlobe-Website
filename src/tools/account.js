@@ -12,6 +12,8 @@ import {
   exportData,
   getProfile,
   getSession,
+  googleStartUrl,
+  listAuthProviders,
   listSessions,
   logout,
   onSessionChange,
@@ -20,6 +22,7 @@ import {
   revokeAllSessions,
   revokeSession,
   requestPasswordReset,
+  unlinkGoogle,
   updateProfile,
 } from '../auth.js';
 import { resolveMediaType } from '../domain/media.js';
@@ -421,6 +424,7 @@ export default {
       const deleteButton = el('button', { class: 'btn btn-danger', type: 'button' }, 'Delete my account');
       const exportButton = el('button', { class: 'btn btn-outline', type: 'button' }, 'Download my data (JSON)');
       const logoutButton = el('button', { class: 'btn btn-outline', type: 'button' }, 'Log out');
+      const oauthActions = el('div', { class: 'account-oauth-actions' });
 
       const body = el(
         'div',
@@ -442,6 +446,19 @@ export default {
         el(
           'section',
           { class: 'panel account-panel' },
+          el(
+            'div',
+            { class: 'account-subsection', id: 'account-oauth-row' },
+            el('h2', { class: 'panel-title' }, 'Google sign-in'),
+            el('p', { class: 'account-danger-note' }, session.user.oauthProvider === 'google' ? 'Google is linked. You can unlink with your password below.' : 'Link Google to sign in without a password.'),
+            oauthActions,
+            el(
+              'div',
+              { class: 'field' },
+              el('label', { for: 'account-oauth-password' }, 'Password (to unlink)'),
+              el('input', { type: 'password', id: 'account-oauth-password', autocomplete: 'current-password', maxlength: '128' })
+            )
+          ),
           el('div', { class: 'account-subsection' }, el('h2', { class: 'panel-title' }, 'Change password'), changeForm),
           el(
             'div',
@@ -482,6 +499,38 @@ export default {
       refreshSessions();
       refreshHistory();
       refreshProfile();
+      // OAuth link/unlink actions (providers fetched, button hidden when off).
+      listAuthProviders()
+        .then((providers) => {
+          const google = providers.find((p) => p.provider === 'google' && p.enabled);
+          if (!google) {
+            oauthActions.hidden = true;
+            return;
+          }
+          if (session.user.oauthProvider === 'google') {
+            const unlinkButton = el('button', { class: 'btn btn-danger btn-sm', type: 'button' }, 'Unlink Google');
+            unlinkButton.addEventListener('click', async () => {
+              const pw = document.getElementById('account-oauth-password');
+              unlinkButton.disabled = true;
+              try {
+                await unlinkGoogle(pw && pw.value ? pw.value : '');
+                if (pw) pw.value = '';
+                setStatus(status, 'Google unlinked.', 'info');
+                renderPage();
+              } catch (error) {
+                setStatus(status, error instanceof AuthError ? error.message : 'Could not unlink Google.', 'error');
+              } finally {
+                unlinkButton.disabled = false;
+              }
+            });
+            render(oauthActions, unlinkButton);
+          } else {
+            render(oauthActions, el('a', { class: 'btn btn-outline btn-sm', href: googleStartUrl('link') }, 'Link Google'));
+          }
+        })
+        .catch(() => {
+          oauthActions.hidden = true;
+        });
 
       sessionList.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-revoke]');

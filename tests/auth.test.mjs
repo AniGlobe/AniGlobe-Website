@@ -11,7 +11,7 @@ import { hashPassword, verifyPassword } from '../api/_server/passwords.js';
  * a tiny client that mimics a browser: it keeps cookies and echoes the CSRF
  * value, which is exactly the surface a malicious client would fuzz.
  */
-async function startTestServer({ mail = null } = {}) {
+async function startTestServer({ mail = null, oauth = null } = {}) {
   const db = await openDatabase(':memory:');
   const outbox = [];
   const api = createApiRouter({
@@ -20,6 +20,7 @@ async function startTestServer({ mail = null } = {}) {
     loginLimiter: { consume: () => ({ allowed: true, retryAfterMs: 0 }) },
     resetLimiter: { consume: () => ({ allowed: true, retryAfterMs: 0 }) },
     mailer: mail || (async (message) => { outbox.push(message); }),
+    ...(oauth ? { oauth } : {}),
   });
   const server = createServer(async (req, res) => {
     try {
@@ -505,6 +506,53 @@ test('public template library: private stays hidden until published, use copies'
     assert.equal((await owner.put('/api/sync/templates/missing', { isPublic: true })).status, 404);
   } finally {
     await close();
+  }
+});
+
+test('google oauth: mocked PKCE login, tampered state, unlink guard', async () => {
+  const fake = {
+    authorizationUrl: async ({ state, codeChallenge }) => 'https://accounts.google.com/auth?state=' + encodeURIComponent(state) + '&code_challenge=' + encodeURIComponent(codeChallenge),
+    exchange: async ({ code }) => {
+      if (code !== 'good-code') throw new Error('bad code');
+      return { sub: 'google-sub-1', email: 'gin@example.com', email_verified: true, name: 'Gin' };
+    },
+  };
+  const { base, close } = await startTestServer({ oauth: fake });
+  try {
+    const providers = await makeClient(base).get('/api/auth/oauth/providers');
+    assert.equal(providers.status, 200);
+    assert.equal(providers.json.providers[0].enabled, true);
+
+    const client = makeClient(base);
+    const start = await client.get('/api/auth/oauth/google/start');
+    assert.equal(start.status, 302);
+    const authUrl = start.headers.get('location');
+    assert.ok(authUrl.includes('state='));
+    const state = new URL(authUrl).searchParams.get('state');
+    const callback = await client.get('/api/auth/oauth/google/callback?code=good-code&state=' + encodeURIComponent(state));
+    assert.equal(callback.status, 302);
+    assert.ok((callback.headers.get('location') || '').includes('#/account?oauth=ok'));
+    const me = await client.get('/api/auth/me');
+    assert.equal(me.json.user.email, 'gin@example.com');
+    assert.equal(me.json.user.oauthProvider, 'google');
+    assert.equal(me.json.user.verified, true);
+
+    // Replayed state/code must fail.
+    const replay = await makeClient(base).get('/api/auth/oauth/google/callback?code=good-code&state=' + encodeURIComponent(state));
+    assert.equal(replay.status, 302);
+    assert.ok((replay.headers.get('location') || '').includes('oauth=error'));
+
+    // Unlink without password is refused.
+    const noPw = await client.del('/api/auth/oauth/google', {});
+    assert.equal(noPw.status, 403);
+  } finally {
+    await close();
+  }
+  const off = await startTestServer();
+  try {
+    assert.equal((await makeClient(off.base).get('/api/auth/oauth/google/start')).status, 501);
+  } finally {
+    await off.close();
   }
 });
 

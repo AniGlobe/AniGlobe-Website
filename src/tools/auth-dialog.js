@@ -5,7 +5,7 @@
  */
 
 import { el, render, setStatus } from '../lib.js';
-import { AuthError, login, register } from '../auth.js';
+import { AuthError, googleStartUrl, listAuthProviders, login, register } from '../auth.js';
 
 const MODES = ['login', 'register'];
 
@@ -50,6 +50,7 @@ export function createAuthDialog() {
 
   const closeButton = el('button', { class: 'auth-dialog-close', type: 'button', 'aria-label': 'Close sign-in' }, '×');
   const modeToggle = el('button', { class: 'btn btn-quiet auth-mode-toggle', type: 'button' }, 'Create an account');
+  const googleButton = el('a', { class: 'btn btn-outline auth-google', href: googleStartUrl('login'), hidden: true }, 'Continue with Google');
 
   const dialog = el(
     'dialog',
@@ -61,6 +62,7 @@ export function createAuthDialog() {
       closeButton
     ),
     form,
+    googleButton,
     el('p', { class: 'auth-dialog-foot' }, modeToggle)
   );
 
@@ -168,10 +170,21 @@ export function createAuthDialog() {
     else passwordField.querySelector('input').focus();
   }
 
+  function refreshGoogleButton() {
+    listAuthProviders()
+      .then((providers) => {
+        googleButton.hidden = !providers.some((p) => p.provider === 'google' && p.enabled);
+      })
+      .catch(() => {
+        googleButton.hidden = true;
+      });
+  }
+
   function openDialog(nextMode = 'login', trigger = null) {
     mode = MODES.includes(nextMode) ? nextMode : 'login';
     lastTrigger = trigger;
     paint();
+    refreshGoogleButton();
     if (!dialog.open) dialog.showModal();
     focusFirstField();
   }
