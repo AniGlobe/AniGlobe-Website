@@ -5,6 +5,7 @@
    Globe stamp motif: concentric rings at 44% scale, the maker's mark. */
 
 :root {
+  color-scheme: dark;
   --ground: #000000;
   --surface: #111111;
   --raised: #2a2a2a;
@@ -14,7 +15,7 @@
   --text: #ffffff;
   --muted: #b4b4b4;
   --faint: #949494;
-  --accent: #3b82f6; /* brand blue from logo — data/interactive only */
+  --accent: #3b82f6;
   --accent-ink: #000000;
   --positive: #3b82f6;
   --negative: #e5484d;
@@ -26,6 +27,7 @@
   --pill-negative-bg: #2c1a20; --pill-negative-ink: #e5566f;
   --pill-warning-bg: #2b2414; --pill-warning-ink: #e5a93b;
   --pill-neutral-bg: #222222; --pill-neutral-ink: #ffffff;
+  --theme-icon-bg: var(--surface);
 
   --font-sans: "Inter", system-ui, sans-serif;
   --font-plex: "IBM Plex Sans", "Inter", system-ui, sans-serif;
@@ -64,6 +66,31 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --ground: #f4f4f5;
+  --surface: #ffffff;
+  --raised: #ececf1;
+  --border: #e4e4e7;
+  --rule: #eeeef0;
+  --control: #d4d4d8;
+  --text: #111111;
+  --muted: #52525b;
+  --faint: #71717a;
+  --accent: #2563eb;
+  --accent-ink: #ffffff;
+  --positive: #2563eb;
+  --negative: #dc2626;
+  --warning: #b45309;
+  --chart-1: #2563eb;
+  --chart-2: #52525b;
+  --chart-3: #a1a1aa;
+  --pill-positive-bg: #dcfce7; --pill-positive-ink: #166534;
+  --pill-negative-bg: #fee2e2; --pill-negative-ink: #b91c1c;
+  --pill-warning-bg: #fef3c7; --pill-warning-ink: #92400e;
+  --pill-neutral-bg: #f4f4f5; --pill-neutral-ink: #27272a;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -1838,6 +1865,22 @@ html.wrapped-dialog-open { overflow: hidden; }
 .btn-danger:disabled { background: var(--border); color: var(--faint); border-color: var(--border); cursor: not-allowed; transform: none; }
 
 .topbar-actions { display: flex; align-items: center; gap: var(--s2); }
+.topbar-auth-slot { display: flex; align-items: center; gap: var(--s2); }
+.theme-toggle {
+  display: grid; place-items: center;
+  width: 44px; height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color var(--t-hover) ease, color var(--t-hover) ease, border-color var(--t-hover) ease;
+}
+.theme-toggle:hover { background: var(--raised); color: var(--text); border-color: var(--control); }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.theme-toggle .theme-icon-sun { display: none; }
+[data-theme="light"] .theme-toggle .theme-icon-sun { display: block; }
+[data-theme="light"] .theme-toggle .theme-icon-moon { display: none; }
 
 /* ---------- account page: devices, verification, link pages ---------- */
 

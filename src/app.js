@@ -18,7 +18,8 @@ import { initialAvatarDataUrl } from './domain/avatar.js';
 
 const dom = {
   topbarBrand: document.querySelector('.topbar-brand'),
-  topbarActions: document.querySelector('.topbar-actions'),
+  topbarActions: document.querySelector('.topbar-auth-slot'),
+  themeToggle: document.getElementById('theme-toggle'),
   sidebar: document.getElementById('site-sidebar'),
   sidebarBackdrop: document.getElementById('sidebar-backdrop'),
   sidebarToggle: document.getElementById('sidebar-toggle'),
@@ -381,13 +382,54 @@ function closeSidebar() {
   document.body.dataset.sidebar = 'closed';
 }
 
+const THEME_KEY = 'aniglobe:theme';
+function initTheme() {
+  let theme = null;
+  try {
+    theme = localStorage.getItem(THEME_KEY);
+  } catch {
+    theme = null;
+  }
+  if (theme !== 'light' && theme !== 'dark') {
+    theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  document.documentElement.dataset.theme = theme;
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    /* ignore */
+  }
+  syncThemeButton();
+}
+
+function syncThemeButton() {
+  if (!dom.themeToggle) return;
+  const isLight = document.documentElement.dataset.theme === 'light';
+  dom.themeToggle.setAttribute('aria-label', isLight ? 'Switch to dark mode' : 'Switch to light mode');
+  dom.themeToggle.title = isLight ? 'Dark mode' : 'Light mode';
+  dom.themeToggle.dataset.mode = isLight ? 'light' : 'dark';
+}
+
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next;
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch {
+    /* ignore */
+  }
+  syncThemeButton();
+}
+
 function start() {
+  initTheme();
   renderBrand();
   renderNav();
   renderFooter();
   renderTopbarAuth();
   onSessionChange(renderTopbarAuth);
   refreshSession();
+  if (dom.themeToggle) dom.themeToggle.addEventListener('click', toggleTheme);
 
   // Sidebar toggle
   dom.sidebarToggle.addEventListener('click', toggleSidebar);
