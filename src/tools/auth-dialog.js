@@ -160,12 +160,20 @@ export function createAuthDialog() {
     }
   }
 
+  function focusFirstField() {
+    const first = mode === 'login'
+      ? document.getElementById('auth-identifier')
+      : document.getElementById('auth-username');
+    if (first) first.focus();
+    else passwordField.querySelector('input').focus();
+  }
+
   function openDialog(nextMode = 'login', trigger = null) {
     mode = MODES.includes(nextMode) ? nextMode : 'login';
     lastTrigger = trigger;
     paint();
     if (!dialog.open) dialog.showModal();
-    passwordField.querySelector('input').focus();
+    focusFirstField();
   }
 
   function closeDialog() {
@@ -178,7 +186,7 @@ export function createAuthDialog() {
   modeToggle.addEventListener('click', () => {
     mode = mode === 'login' ? 'register' : 'login';
     paint();
-    passwordField.querySelector('input').focus();
+    focusFirstField();
   });
   dialog.addEventListener('click', (event) => {
     if (event.target === dialog) closeDialog();

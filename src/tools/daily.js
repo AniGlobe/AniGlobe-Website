@@ -401,7 +401,12 @@ export default {
           )
         ),
         el('pre', { class: 'daily-share num' }, shareText(number, cluesShown, wrongGuesses.length + (won ? 1 : 0), score, won, media.label)),
-        button
+        el(
+          'div',
+          { class: 'daily-result-actions' },
+          button,
+          getSession() ? el('a', { class: 'btn btn-quiet', href: '#/account' }, 'See your streak history') : null
+        )
       );
       button.addEventListener('click', async () => {
         const copied = await copyText(shareText(

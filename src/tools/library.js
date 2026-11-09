@@ -25,6 +25,7 @@ export default {
     const empty = el('p', { class: 'account-danger-note', hidden: true }, 'No public templates yet. Publish one from the card studio to appear here.');
     const noResults = el('p', { class: 'account-danger-note', hidden: true }, 'No templates match your filters.');
     const retryButton = el('button', { class: 'btn btn-outline btn-sm', type: 'button', hidden: true }, 'Retry');
+    const studioCta = el('p', { hidden: true }, el('a', { class: 'btn btn-primary btn-sm', href: '#/card' }, 'Open card studio'));
 
     render(
       root,
@@ -40,6 +41,7 @@ export default {
         el('div', { class: 'field' }, el('label', { for: 'library-search' }, 'Search'), search),
         themeFilter,
         status,
+        studioCta,
         list,
         empty,
         noResults,
@@ -142,9 +144,11 @@ export default {
       }
       button.disabled = true;
       button.textContent = 'Saving…';
+      studioCta.hidden = true;
       try {
         const result = await usePublicTemplate(button.dataset.use);
-        setStatus(status, '"' + result.name + '" saved. Open the card studio to apply it.', 'info');
+        studioCta.hidden = false;
+        setStatus(status, '"' + result.name + '" saved.', 'info');
       } catch (error) {
         setStatus(status, error instanceof AuthError ? error.message : 'Could not add that template.', 'error');
       } finally {

@@ -1000,6 +1000,8 @@ input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="
   line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .daily-result .btn { margin-top: var(--s3); }
+.daily-result-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+.daily-result-actions .btn { margin-top: 0; }
 
 .kpi-value[data-flash="down"] { animation: kpi-drop 480ms var(--ease-out); }
 @keyframes kpi-drop {
