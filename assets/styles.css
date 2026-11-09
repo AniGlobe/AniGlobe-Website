@@ -70,28 +70,43 @@
 
 [data-theme="light"] {
   color-scheme: light;
-  --ground: #f4f4f5;
+  --ground: #fafafa;
   --surface: #ffffff;
-  --raised: #ececf1;
-  --border: #e4e4e7;
-  --rule: #eeeef0;
-  --control: #d4d4d8;
-  --text: #111111;
-  --muted: #52525b;
-  --faint: #71717a;
-  --accent: #2563eb;
+  --raised: #f0f0f3;
+  --border: #d9d9de;
+  --rule: #e7e7ea;
+  --control: #c9c9cf;
+  --text: #0f0f12;
+  --muted: #4b4b54;
+  --faint: #63636d;
+  --accent: #1d4ed8;
   --accent-ink: #ffffff;
-  --positive: #2563eb;
-  --negative: #dc2626;
-  --warning: #b45309;
-  --chart-1: #2563eb;
-  --chart-2: #52525b;
-  --chart-3: #a1a1aa;
-  --pill-positive-bg: #dcfce7; --pill-positive-ink: #166534;
+  --positive: #1d4ed8;
+  --negative: #b91c1c;
+  --warning: #92400e;
+  --chart-1: #1d4ed8;
+  --chart-2: #4b4b54;
+  --chart-3: #8e8e97;
+  --pill-positive-bg: #dcfce7; --pill-positive-ink: #15803d;
   --pill-negative-bg: #fee2e2; --pill-negative-ink: #b91c1c;
   --pill-warning-bg: #fef3c7; --pill-warning-ink: #92400e;
-  --pill-neutral-bg: #f4f4f5; --pill-neutral-ink: #27272a;
+  --pill-neutral-bg: #ececf0; --pill-neutral-ink: #18181b;
 }
+[data-theme="light"] .panel,
+[data-theme="light"] .home-hero,
+[data-theme="light"] .home-feature-card,
+[data-theme="light"] .home-tile,
+[data-theme="light"] .auth-page-card { box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06); }
+[data-theme="light"] .home-hero {
+  background:
+    radial-gradient(560px circle at 50% 0%, rgba(29, 78, 216, 0.10), transparent 60%),
+    var(--surface);
+}
+[data-theme="light"] input, [data-theme="light"] select, [data-theme="light"] textarea { background: var(--surface); }
+[data-theme="light"] .topbar,
+[data-theme="light"] .site-footer { background: var(--surface); }
+[data-theme="light"] .site-sidebar { background: var(--ground); }
+[data-theme="light"] ::selection { background: var(--accent); color: var(--accent-ink); }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -1973,6 +1988,13 @@ html.wrapped-dialog-open { overflow: hidden; }
 .account-profile-gallery-list li { font-size: var(--fs-small); color: var(--muted); }
 
 /* Topbar account menu: circle avatar + dropdown (Profile / Log out) */
+.topbar-brand .logo-light,
+.footer-brand .logo-light { display: none; }
+[data-theme="light"] .topbar-brand .logo-dark,
+[data-theme="light"] .footer-brand .logo-dark { display: none; }
+[data-theme="light"] .topbar-brand .logo-light,
+[data-theme="light"] .footer-brand .logo-light { display: block; }
+
 .topbar-account-menu { position: relative; }
 .topbar-avatar-btn {
   display: grid;

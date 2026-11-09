@@ -169,7 +169,12 @@ function renderFooter() {
           el('img', {
             src: 'assets/logo/AniGlobe/AniGlobe - PRIMARY LOGO TRANSPARENT.png',
             alt: '',
-            class: 'footer-logo'
+            class: 'footer-logo logo-dark'
+          }),
+          el('img', {
+            src: 'assets/logo/AniGlobe/AniGlobe - PRIMARY LOGO LIGHT TRANSPARENT.png',
+            alt: '',
+            class: 'footer-logo logo-light'
           })
         ),
         el('p', { class: 'footer-tagline' }, site.tagline)
