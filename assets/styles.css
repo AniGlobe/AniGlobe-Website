@@ -2097,12 +2097,27 @@ html.wrapped-dialog-open { overflow: hidden; }
   border-radius: var(--radius-card);
   background: var(--raised); border: 1px solid var(--border);
   font-weight: 600; font-size: var(--fs-section);
+  animation: home-float 6s ease-in-out infinite;
   transition: transform var(--t-ui) var(--ease-out), border-color var(--t-hover) ease;
 }
-.home-visual-card:hover { transform: translateY(-3px); border-color: var(--control); }
-.home-visual-card-a { margin-left: 0; }
-.home-visual-card-b { margin-left: var(--s5); background: var(--accent); color: var(--ground); border-color: transparent; }
-.home-visual-card-c { margin-left: var(--s2); }
+.home-visual-card-a { margin-left: 0; animation-delay: 0s; }
+.home-visual-card-b { margin-left: var(--s5); background: var(--accent); color: var(--ground); border-color: transparent; animation-delay: 0.8s; }
+.home-visual-card-c { margin-left: var(--s2); animation-delay: 1.6s; }
+@keyframes home-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.home-hero { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28); }
+[data-theme="light"] .home-hero { box-shadow: 0 20px 60px rgba(29, 78, 216, 0.10); }
+.home-tile { animation: home-fade-up 480ms var(--ease-out) backwards; }
+.home-tile:nth-child(2) { animation-delay: 0.06s; }
+.home-tile:nth-child(3) { animation-delay: 0.12s; }
+.home-tile:nth-child(4) { animation-delay: 0.18s; }
+.home-tile:nth-child(5) { animation-delay: 0.24s; }
+@keyframes home-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .home-section { display: grid; gap: var(--s3); }
 .home-h2 { font-size: var(--fs-title); font-weight: 650; letter-spacing: -0.02em; }
 .home-section-lead { color: var(--muted); font-size: var(--fs-small); }
@@ -2158,8 +2173,8 @@ html.wrapped-dialog-open { overflow: hidden; }
   .home-visual-card-c { margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .home-visual-card, .home-feature-card { transition: none; }
-  .home-visual-card:hover, .home-feature-card:hover { transform: none; }
+  .home-visual-card, .home-tile, .home-feature-card { animation: none; transition: none; }
+  .home-visual-card:hover, .home-feature-card:hover, .home-tile:hover { transform: none; }
 }
 
 /* Standalone auth + onboarding pages */
