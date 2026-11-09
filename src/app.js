@@ -9,9 +9,10 @@
 import { site, tools, TOOL_CATEGORIES, resolveToolId, defaultToolId } from './config.js';
 import { el, render } from './lib.js';
 import { getProfile, getSession, logout, onSessionChange, refreshSession } from './auth.js';
-import { createAuthDialog } from './tools/auth-dialog.js';
 import { renderReset, renderVerify } from './tools/auth-links.js';
 import { renderProfile } from './tools/profile-page.js';
+import { renderAuthPage } from './tools/auth-page.js';
+import { renderOnboarding } from './tools/onboarding.js';
 import { initialAvatarDataUrl } from './domain/avatar.js';
 
 const dom = {
@@ -25,12 +26,7 @@ const dom = {
   footer: document.getElementById('footer'),
 };
 
-let authDialog = null;
 
-function getAuthDialog() {
-  if (!authDialog) authDialog = createAuthDialog();
-  return authDialog;
-}
 
 function closeTopbarMenus() {
   const open = document.querySelector('.topbar-menu:not([hidden])');
@@ -97,11 +93,10 @@ function renderTopbarAuth() {
         /* offline: keep the generated initial */
       });
   } else {
-    const loginButton = el('button', { class: 'btn btn-outline btn-sm', type: 'button' }, 'Log in');
-    const registerButton = el('button', { class: 'btn btn-primary btn-sm', type: 'button' }, 'Create account');
-    loginButton.addEventListener('click', (event) => getAuthDialog().open('login', event.currentTarget));
-    registerButton.addEventListener('click', (event) => getAuthDialog().open('register', event.currentTarget));
-    actions.push(loginButton, registerButton);
+    actions.push(
+      el('a', { class: 'btn btn-outline btn-sm', href: '#/login' }, 'Log in'),
+      el('a', { class: 'btn btn-primary btn-sm', href: '#/signup' }, 'Create account')
+    );
   }
   render(dom.topbarActions, ...actions);
 }
@@ -266,6 +261,33 @@ async function mountRoute() {
     render(dom.app);
     renderProfile(dom.app);
     document.title = 'Profile | ' + site.name;
+    dom.app.focus({ preventScroll: true });
+    return;
+  }
+  if (rawPath.startsWith('/login')) {
+    mountToken += 1;
+    runCleanup();
+    render(dom.app);
+    renderAuthPage(dom.app, 'login');
+    document.title = 'Log in | ' + site.name;
+    dom.app.focus({ preventScroll: true });
+    return;
+  }
+  if (rawPath.startsWith('/signup')) {
+    mountToken += 1;
+    runCleanup();
+    render(dom.app);
+    renderAuthPage(dom.app, 'register');
+    document.title = 'Create your account | ' + site.name;
+    dom.app.focus({ preventScroll: true });
+    return;
+  }
+  if (rawPath.startsWith('/welcome')) {
+    mountToken += 1;
+    runCleanup();
+    render(dom.app);
+    renderOnboarding(dom.app);
+    document.title = 'Welcome | ' + site.name;
     dom.app.focus({ preventScroll: true });
     return;
   }

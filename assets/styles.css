@@ -1990,6 +1990,34 @@ html.wrapped-dialog-open { overflow: hidden; }
 /* Field-level errors (auth dialog polish) */
 .field-error { color: var(--pill-negative-ink); font-size: var(--fs-small); line-height: 1.5; margin: 0; }
 
+/* Standalone auth + onboarding pages */
+.auth-page-wrap { width: 100%; max-width: 520px; margin-inline: auto; display: grid; justify-items: stretch; }
+.auth-page-card { padding: var(--s5); border-radius: var(--radius-card); }
+.auth-page-head { display: grid; gap: var(--s1); margin-bottom: var(--s3); text-align: center; }
+.auth-page-title { font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.02em; }
+.auth-page-subtitle { color: var(--muted); font-size: var(--fs-small); line-height: 1.5; }
+.auth-page-back { margin-top: var(--s3); text-align: center; }
+.auth-page-card .auth-form { padding: 0; }
+.auth-page-card .auth-google { width: 100%; margin: var(--s3) 0 0; }
+
+.onboarding { width: 100%; max-width: 860px; margin-inline: auto; display: grid; gap: var(--s4); }
+.onboarding-eyebrow { color: var(--accent); font-size: var(--fs-small); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; text-align: center; }
+.onboarding-title { font-size: var(--fs-display); font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; text-align: center; }
+.onboarding-lead { color: var(--muted); font-size: var(--fs-body); line-height: 1.6; text-align: center; max-width: 60ch; margin-inline: auto; }
+.onboarding-ctas { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: center; }
+.onboarding-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); list-style: none; margin: 0; padding: 0; }
+.onboarding-step { display: grid; gap: var(--s2); padding: var(--s4); border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); }
+.onboarding-step-num { color: var(--accent); font-size: var(--fs-kpi-sm); font-weight: 600; }
+.onboarding-step h3 { font-size: var(--fs-small); font-weight: 600; }
+.onboarding-step p { color: var(--muted); font-size: var(--fs-small); line-height: 1.55; }
+.onboarding-panel { padding: var(--s4); }
+.onboarding-features { display: grid; gap: var(--s2); }
+.onboarding-feature { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-height: 44px; padding: 0 var(--s3); border: 1px solid var(--border); border-radius: 8px; font-size: var(--fs-small); }
+.onboarding-feature:hover { background: var(--raised); }
+@media (max-width: 760px) {
+  .onboarding-steps { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* Public template library */
 .library-filters { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
 .library-list { display: grid; gap: var(--s2); list-style: none; margin-top: var(--s3); padding: 0; }
