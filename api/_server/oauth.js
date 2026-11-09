@@ -1,7 +1,7 @@
 /**
- * Google OAuth via openid-client (S256 PKCE).
+ * Google OAuth via openid-client v6 (S256 PKCE).
  * Enabled only when GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET are set.
- * No hard-coded redirect host — callers pass the absolute callback URL
+ * No hard-coded redirect host, callers pass the absolute callback URL
  * (from GOOGLE_CALLBACK_URL or the request origin).
  */
 
@@ -26,41 +26,39 @@ export function callbackUrl(req) {
   return `${proto === 'https' ? 'https' : 'http'}://${safeHost}/api/auth/oauth/google/callback`;
 }
 
-let discovery = null;
+let configPromise = null;
 
-async function getDiscovery() {
-  if (!discovery) {
-    const { discovery: disc } = await import('openid-client');
-    discovery = disc;
+async function getConfig() {
+  if (!configPromise) {
+    configPromise = (async () => {
+      const { discovery } = await import('openid-client');
+      return discovery(GOOGLE_ISSUER, process.env.GOOGLE_CLIENT_ID);
+    })();
   }
-  return discovery;
-}
-
-export async function buildGoogleClient(redirectUri) {
-  const { Client } = await import('openid-client');
-  const disc = await getDiscovery();
-  const issuer = await disc(GOOGLE_ISSUER);
-  return new Client({
-    client_id: process.env.GOOGLE_CLIENT_ID,
-    client_secret: process.env.GOOGLE_CLIENT_SECRET,
-    redirect_uris: [redirectUri],
-    issuer,
-  });
+  return configPromise;
 }
 
 export async function googleAuthorizationUrl(redirectUri, { state, codeChallenge }) {
-  const client = await buildGoogleClient(redirectUri);
-  return client.authorizationUrl({
+  const { buildAuthorizationUrl } = await import('openid-client');
+  const config = await getConfig();
+  const params = {
     scope: 'openid email profile',
     state,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
-  });
+    redirect_uri: redirectUri,
+  };
+  return buildAuthorizationUrl(config, params).toString();
 }
 
 export async function exchangeGoogleCode(redirectUri, { code, codeVerifier }) {
-  const client = await buildGoogleClient(redirectUri);
-  const tokens = await client.callback(redirectUri, { code }, { code_verifier: codeVerifier });
-  const userinfo = await client.userinfo(tokens.access_token);
+  const { authorizationCodeGrant, fetchUserInfo } = await import('openid-client');
+  const config = await getConfig();
+  const tokens = await authorizationCodeGrant(config, redirectUri, {
+    code,
+    code_verifier: codeVerifier,
+    client_secret: process.env.GOOGLE_CLIENT_SECRET,
+  });
+  const userinfo = await fetchUserInfo(config, tokens.access_token, 'sub');
   return userinfo;
 }

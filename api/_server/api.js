@@ -421,20 +421,28 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     const code = String(url.searchParams.get('code') || '');
     const state = String(url.searchParams.get('state') || '');
     const done = (ok) => {
+      if (res.headersSent) return;
       const target = originOf(req) + '#/account?oauth=' + (ok ? 'ok' : 'error');
       res.writeHead(302, { Location: target, 'Cache-Control': 'no-store' });
       res.end();
     };
     if (!code || !state) return done(false);
-    const { createHash } = await import('node:crypto');
-    const row = await findOAuthState(db, createHash('sha256').update(state).digest('hex'));
+    let row;
+    try {
+      const { createHash } = await import('node:crypto');
+      row = await findOAuthState(db, createHash('sha256').update(state).digest('hex'));
+    } catch (error) {
+      logEvent('oauth_callback_failed', { reason: 'db', error: error && error.message ? String(error.message).slice(0, 80) : 'unknown' });
+      return done(false);
+    }
     if (!row || row.used_at !== null || row.expires_at < new Date().toISOString()) {
       logEvent('oauth_callback_failed', { reason: row ? 'expired_or_used' : 'unknown_state' });
       return done(false);
     }
-    await useOAuthState(db, createHash('sha256').update(state).digest('hex'));
     let info;
     try {
+      const { createHash } = await import('node:crypto');
+      await useOAuthState(db, createHash('sha256').update(state).digest('hex'));
       const redirectUri = callbackUrl(req);
       info = oauth && typeof oauth.exchange === 'function'
         ? await oauth.exchange({ redirectUri, code, codeVerifier: row.code_verifier })
