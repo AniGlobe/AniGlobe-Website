@@ -182,6 +182,92 @@ const MIGRATIONS = [
     );
     return statements;
   },
+  async (db) => {
+    // Catalogue snapshot (we own it; providers are only read on a miss).
+    // media.id is our own surrogate key; provider ids live in media_id_map.
+    return [
+      `CREATE TABLE IF NOT EXISTS media (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider TEXT NOT NULL,
+        provider_id TEXT NOT NULL,
+        title_en TEXT,
+        title_romaji TEXT,
+        title_native TEXT,
+        title_norm TEXT,
+        format TEXT,
+        subtype TEXT,
+        episodes INTEGER,
+        chapters INTEGER,
+        volumes INTEGER,
+        media_status TEXT,
+        season TEXT,
+        season_year INTEGER,
+        average_rating REAL,
+        popularity INTEGER,
+        genres TEXT,
+        cover_url TEXT,
+        synopsis TEXT,
+        nsfw INTEGER NOT NULL DEFAULT 0,
+        fetched_at TEXT NOT NULL,
+        updated_at TEXT,
+        expires_at TEXT
+      )`,
+      'CREATE UNIQUE INDEX IF NOT EXISTS media_provider_unique ON media (provider, provider_id)',
+      'CREATE INDEX IF NOT EXISTS media_title_norm_idx ON media (title_norm)',
+      `CREATE TABLE IF NOT EXISTS media_id_map (
+        provider TEXT NOT NULL,
+        provider_id TEXT NOT NULL,
+        media_id INTEGER NOT NULL REFERENCES media (id) ON DELETE CASCADE,
+        PRIMARY KEY (provider, provider_id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS media_search_tokens (
+        token TEXT NOT NULL,
+        media_id INTEGER NOT NULL REFERENCES media (id) ON DELETE CASCADE,
+        PRIMARY KEY (token, media_id)
+      )`,
+      'CREATE INDEX IF NOT EXISTS media_search_tokens_media_idx ON media_search_tokens (media_id)',
+      `CREATE TABLE IF NOT EXISTS library_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        media_id INTEGER NOT NULL REFERENCES media (id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'PLANNING',
+        progress INTEGER NOT NULL DEFAULT 0,
+        score REAL,
+        notes TEXT,
+        favourite INTEGER NOT NULL DEFAULT 0,
+        rewatch_count INTEGER NOT NULL DEFAULT 0,
+        started_at TEXT,
+        completed_at TEXT,
+        source TEXT NOT NULL DEFAULT 'local',
+        remote_entry_id TEXT,
+        sync_state TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (user_id, media_id)
+      )`,
+      'CREATE INDEX IF NOT EXISTS library_entries_user_idx ON library_entries (user_id, updated_at DESC)',
+      `CREATE TABLE IF NOT EXISTS library_sync_state (
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        last_sync_at TEXT,
+        last_error TEXT,
+        pulled INTEGER NOT NULL DEFAULT 0,
+        pushed INTEGER NOT NULL DEFAULT 0,
+        conflicted INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, provider)
+      )`,
+      `CREATE TABLE IF NOT EXISTS catalogue_sync_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        fetched INTEGER NOT NULL DEFAULT 0,
+        updated INTEGER NOT NULL DEFAULT 0,
+        skipped INTEGER NOT NULL DEFAULT 0,
+        error TEXT
+      )`,
+    ];
+  },
 ];
 
 function nowIso() {
@@ -259,13 +345,14 @@ async function runWrite(db, sql, args) {
 
 export async function createUser(db, { username, email, passwordHash }) {
   const at = nowIso();
-  return insert(db, 'users', {
+  const id = await insert(db, 'users', {
     username,
     email,
     password_hash: passwordHash,
     created_at: at,
     updated_at: at,
   });
+  return getUserById(db, id);
 }
 
 export async function getUserById(db, id) {
@@ -579,6 +666,265 @@ export async function useVerifyToken(db, tokenHash) {
   await runWrite(db, 'UPDATE email_verification_tokens SET used_at = ? WHERE token_hash = ?', [nowIso(), tokenHash]);
 }
 
+/* ------------------------------------------------------ catalogue snapshot */
+
+export function normaliseTitle(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/gu, '')
+    .replace(/[^a-z0-9]+/gu, ' ')
+    .trim();
+}
+
+export function tokeniseTitle(text) {
+  const normalised = normaliseTitle(text);
+  if (!normalised) return [];
+  return [...new Set(normalised.split(' ').filter(Boolean))];
+}
+
+/** Look up a snapshot row by provider id. */
+export async function getMediaByProviderId(db, provider, providerId) {
+  return getRow(db, 'SELECT * FROM media WHERE provider = ? AND provider_id = ?', [provider, providerId]);
+}
+
+export async function getMediaById(db, id) {
+  return getRow(db, 'SELECT * FROM media WHERE id = ?', [id]);
+}
+
+/**
+ * Insert or refresh a snapshot row and its search tokens.
+ * Tokens are replaced wholesale so a title change cannot leave stale rows.
+ */
+export async function upsertMedia(db, media, tokens) {
+  const at = nowIso();
+  const existing = await getMediaByProviderId(db, media.provider, media.providerId);
+  if (existing) {
+    await runWrite(db, `
+      UPDATE media SET
+        title_en = ?, title_romaji = ?, title_native = ?, title_norm = ?,
+        format = ?, subtype = ?, episodes = ?, chapters = ?, volumes = ?,
+        media_status = ?, season = ?, season_year = ?, average_rating = ?,
+        popularity = ?, genres = ?, cover_url = ?, synopsis = ?, nsfw = ?,
+        updated_at = ?, fetched_at = ?, expires_at = ?
+      WHERE id = ?
+    `, [
+      media.titleEn, media.titleRomaji, media.titleNative, media.titleNorm,
+      media.format, media.subtype, media.episodes, media.chapters, media.volumes,
+      media.status, media.season, media.seasonYear, media.averageRating,
+      media.popularity, media.genres, media.coverUrl, media.synopsis,
+      media.nsfw ? 1 : 0, media.updatedAt || null, at, media.expiresAt || null,
+      existing.id,
+    ]);
+    await runWrite(db, 'DELETE FROM media_search_tokens WHERE media_id = ?', [existing.id]);
+    for (const token of tokens) {
+      await runWrite(db, 'INSERT OR IGNORE INTO media_search_tokens (token, media_id) VALUES (?, ?)', [token, existing.id]);
+    }
+    return existing.id;
+  }
+  const id = await insert(db, 'media', {
+    provider: media.provider,
+    provider_id: media.providerId,
+    title_en: media.titleEn,
+    title_romaji: media.titleRomaji,
+    title_native: media.titleNative,
+    title_norm: media.titleNorm,
+    format: media.format,
+    subtype: media.subtype,
+    episodes: media.episodes,
+    chapters: media.chapters,
+    volumes: media.volumes,
+    media_status: media.status,
+    season: media.season,
+    season_year: media.seasonYear,
+    average_rating: media.averageRating,
+    popularity: media.popularity,
+    genres: media.genres,
+    cover_url: media.coverUrl,
+    synopsis: media.synopsis,
+    nsfw: media.nsfw ? 1 : 0,
+    fetched_at: at,
+    updated_at: media.updatedAt || null,
+    expires_at: media.expiresAt || null,
+  });
+  await runWrite(db, 'INSERT OR REPLACE INTO media_id_map (provider, provider_id, media_id) VALUES (?, ?, ?)', [media.provider, media.providerId, id]);
+  for (const token of tokens) {
+    await runWrite(db, 'INSERT OR IGNORE INTO media_search_tokens (token, media_id) VALUES (?, ?)', [token, id]);
+  }
+  return id;
+}
+
+/** Snapshot rows for the writer: provider ids above the watermark, oldest first. */
+export async function listMediaIdsForSync(db, provider, afterId, limit) {
+  const rows = await getRows(db, `
+    SELECT provider_id FROM media
+    WHERE provider = ? AND CAST(provider_id AS INTEGER) > ?
+    ORDER BY CAST(provider_id AS INTEGER) ASC LIMIT ?
+  `, [provider, String(afterId || 0), limit]);
+  return rows.map((row) => row.provider_id);
+}
+
+export async function getSyncWatermark(db, provider) {
+  const row = await getRow(db, 'SELECT MAX(CAST(provider_id AS INTEGER)) AS mark FROM media WHERE provider = ?', [provider]);
+  return Number(row && row.mark ? row.mark : 0);
+}
+
+/** Media whose snapshot has expired, so the writer refreshes them. */
+export async function listStaleMedia(db, provider, now, limit) {
+  const rows = await getRows(db, `
+    SELECT provider_id FROM media
+    WHERE provider = ? AND (expires_at IS NULL OR expires_at <= ?)
+    ORDER BY CAST(provider_id AS INTEGER) ASC LIMIT ?
+  `, [provider, now, limit]);
+  return rows.map((row) => row.provider_id);
+}
+
+export async function recordSyncRun(db, run) {
+  return insert(db, 'catalogue_sync_runs', {
+    provider: run.provider,
+    started_at: run.startedAt,
+    finished_at: run.finishedAt || null,
+    fetched: run.fetched || 0,
+    updated: run.updated || 0,
+    skipped: run.skipped || 0,
+    error: run.error || null,
+  });
+}
+
+export async function getLastSyncRun(db, provider) {
+  return getRow(db, 'SELECT * FROM catalogue_sync_runs WHERE provider = ? ORDER BY id DESC LIMIT 1', [provider]);
+}
+
+/* ------------------------------------------------------- library entries */
+
+export const LIBRARY_STATUSES = ['CURRENT', 'PLANNING', 'COMPLETED', 'DROPPED', 'PAUSED', 'REPEATING'];
+
+export async function upsertLibraryEntry(db, userId, entry) {
+  const at = nowIso();
+  const existing = await getRow(db, 'SELECT id FROM library_entries WHERE user_id = ? AND media_id = ?', [userId, entry.mediaId]);
+  if (existing) {
+    await runWrite(db, `
+      UPDATE library_entries SET
+        status = ?, progress = ?, score = ?, notes = ?, favourite = ?,
+        rewatch_count = ?, started_at = ?, completed_at = ?, updated_at = ?
+      WHERE id = ?
+    `, [
+      entry.status, entry.progress, entry.score, entry.notes, entry.favourite ? 1 : 0,
+      entry.rewatchCount || 0, entry.startedAt || null, entry.completedAt || null, at,
+      existing.id,
+    ]);
+    return existing.id;
+  }
+  return insert(db, 'library_entries', {
+    user_id: userId,
+    media_id: entry.mediaId,
+    status: entry.status || 'PLANNING',
+    progress: entry.progress || 0,
+    score: entry.score == null ? null : entry.score,
+    notes: entry.notes || null,
+    favourite: entry.favourite ? 1 : 0,
+    rewatch_count: entry.rewatchCount || 0,
+    started_at: entry.startedAt || null,
+    completed_at: entry.completedAt || null,
+    source: entry.source || 'local',
+    remote_entry_id: entry.remoteEntryId || null,
+    sync_state: entry.syncState || null,
+    created_at: at,
+    updated_at: at,
+  });
+}
+
+export async function listLibraryEntries(db, userId) {
+  const rows = await getRows(db, `
+    SELECT e.*, m.title_en, m.title_romaji, m.title_native, m.cover_url, m.format,
+           m.episodes, m.chapters, m.volumes, m.season_year, m.average_rating, m.genres
+    FROM library_entries e JOIN media m ON m.id = e.media_id
+    WHERE e.user_id = ?
+    ORDER BY e.updated_at DESC
+  `, [userId]);
+  return rows.map((row) => ({
+    id: row.id,
+    mediaId: row.media_id,
+    title: row.title_en || row.title_romaji || row.title_native || 'Untitled',
+    titleRomaji: row.title_romaji,
+    coverUrl: row.cover_url,
+    format: row.format,
+    episodes: row.episodes,
+    chapters: row.chapters,
+    volumes: row.volumes,
+    year: row.season_year,
+    averageRating: row.average_rating,
+    genres: safeJsonArray(row.genres),
+    status: row.status,
+    progress: row.progress,
+    score: row.score,
+    notes: row.notes,
+    favourite: row.favourite === 1,
+    rewatchCount: row.rewatch_count,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    source: row.source,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function getLibraryEntry(db, userId, id) {
+  const row = await getRow(db, 'SELECT * FROM library_entries WHERE id = ? AND user_id = ?', [id, userId]);
+  return row || null;
+}
+
+export async function deleteLibraryEntry(db, userId, id) {
+  const result = await runWrite(db, 'DELETE FROM library_entries WHERE id = ? AND user_id = ?', [id, userId]);
+  return Number(result.rowsAffected || 0) > 0;
+}
+
+export async function libraryStats(db, userId) {
+  const rows = await getRows(db, `
+    SELECT e.status, COUNT(*) AS n FROM library_entries e WHERE e.user_id = ? GROUP BY e.status
+  `, [userId]);
+  const byStatus = {};
+  for (const row of rows) byStatus[row.status] = Number(row.n);
+  const years = await getRows(db, `
+    SELECT m.season_year AS year, COUNT(*) AS n
+    FROM library_entries e JOIN media m ON m.id = e.media_id
+    WHERE e.user_id = ? AND m.season_year IS NOT NULL
+    GROUP BY m.season_year ORDER BY m.season_year DESC
+  `, [userId]);
+  const genres = await getRows(db, `
+    SELECT m.genres FROM library_entries e JOIN media m ON m.id = e.media_id WHERE e.user_id = ?
+  `, [userId]);
+  const genreCounts = new Map();
+  for (const row of genres) {
+    for (const genre of safeJsonArray(row.genres)) {
+      genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
+    }
+  }
+  const topGenres = [...genreCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([name, count]) => ({ name, count }));
+  const total = Object.values(byStatus).reduce((sum, n) => sum + n, 0);
+  return {
+    total,
+    byStatus,
+    topGenres,
+    byYear: years.map((row) => ({ year: Number(row.year), count: Number(row.n) })),
+    completed: byStatus.COMPLETED || 0,
+    watching: byStatus.CURRENT || 0,
+    planned: byStatus.PLANNING || 0,
+  };
+}
+
+function safeJsonArray(value) {
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(String(value || '[]'));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 /* -------------------------------------------------------- rate limits */
 
 /**
@@ -616,6 +962,5 @@ async function insert(db, table, fields) {
     `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders}) RETURNING id`,
     columns.map((column) => fields[column])
   );
-  const id = Number(result.rows[0].id);
-  return getUserById(db, id);
+  return Number(result.rows[0].id);
 }

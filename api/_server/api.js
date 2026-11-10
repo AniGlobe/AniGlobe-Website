@@ -28,6 +28,18 @@ import {
 } from './http.js';
 import { hashPassword, verifyPassword, dummyVerify } from './passwords.js';
 import { resetPasswordMail, verifyEmailMail, sendMail, originOf } from './mail.js';
+import { catalogueProviderId, cronSecret } from './catalogue-config.js';
+import {
+  getLastSyncRun,
+  getLibraryEntry,
+  getMediaById,
+  LIBRARY_STATUSES,
+  deleteLibraryEntry,
+  libraryStats,
+  listLibraryEntries,
+  upsertLibraryEntry,
+} from './db.js';
+import { getSnapshotMedia, runCatalogueSync, searchSnapshot } from './catalogue-store.js';
 import { googleEnabled, GOOGLE_PROVIDER, callbackUrl, googleAuthorizationUrl, exchangeGoogleCode } from './oauth.js';
 import { currentStreak, bestStreak } from '../../src/domain/streak.js';
 import {
@@ -771,6 +783,193 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     json(res, 200, { ok: true });
   }
 
+  /* ------------------------------------------------------- catalogue + list */
+
+  async function mediaSearch(req, res) {
+    const url = new URL(req.url, 'http://placeholder');
+    const query = String(url.searchParams.get('q') || '').trim();
+    const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 24));
+    if (!query) {
+      json(res, 200, { results: [], source: 'snapshot' });
+      return;
+    }
+    const results = await searchSnapshot(db, query, { limit });
+    json(res, 200, { results, source: 'snapshot' });
+  }
+
+  async function mediaDetail(req, res, id) {
+    const media = await getSnapshotMedia(db, Number(id));
+    if (!media) throw new HttpError(404, 'That title is not in the catalogue yet.');
+    json(res, 200, { media });
+  }
+
+  async function libraryList(req, res) {
+    const { user } = await requireSession(db, req);
+    const entries = await listLibraryEntries(db, user.id);
+    json(res, 200, { entries, stats: await libraryStats(db, user.id) });
+  }
+
+  async function libraryCreate(req, res) {
+    requireCsrf(req);
+    const { user } = await requireSession(db, req);
+    const body = await readJsonBody(req);
+    const mediaId = Number(body.mediaId);
+    if (!Number.isInteger(mediaId)) throw new HttpError(400, 'mediaId is required.');
+    const media = await getMediaById(db, mediaId);
+    if (!media) throw new HttpError(404, 'That title is not in the catalogue yet.');
+    const status = normaliseStatus(body.status);
+    const progress = normaliseProgress(body.progress);
+    const score = normaliseScore(body.score);
+    assertProgressWithinLimit(progress, media);
+    const id = await upsertLibraryEntry(db, user.id, {
+      mediaId,
+      status,
+      progress,
+      score,
+      notes: body.notes ? String(body.notes).slice(0, 2000) : null,
+      favourite: body.favourite === true,
+      rewatchCount: Number.isInteger(body.rewatchCount) && body.rewatchCount > 0 ? body.rewatchCount : 0,
+      startedAt: body.startedAt || null,
+      completedAt: body.completedAt || null,
+      source: 'local',
+    });
+    json(res, 201, { entry: { id } });
+  }
+
+  async function libraryUpdate(req, res, id) {
+    requireCsrf(req);
+    const { user } = await requireSession(db, req);
+    const existing = await getLibraryEntry(db, user.id, Number(id));
+    if (!existing) throw new HttpError(404, 'That entry does not exist.');
+    const body = await readJsonBody(req);
+    const media = await getMediaById(db, existing.media_id);
+    const status = body.status === undefined ? existing.status : normaliseStatus(body.status);
+    const progress = body.progress === undefined ? existing.progress : normaliseProgress(body.progress);
+    const score = body.score === undefined ? existing.score : normaliseScore(body.score);
+    if (media) assertProgressWithinLimit(progress, media);
+    await upsertLibraryEntry(db, user.id, {
+      mediaId: existing.media_id,
+      status,
+      progress,
+      score,
+      notes: body.notes === undefined ? existing.notes : (body.notes ? String(body.notes).slice(0, 2000) : null),
+      favourite: body.favourite === undefined ? existing.favourite === 1 : body.favourite === true,
+      rewatchCount: body.rewatchCount === undefined ? existing.rewatch_count : Number(body.rewatchCount) || 0,
+      startedAt: body.startedAt === undefined ? existing.started_at : body.startedAt,
+      completedAt: body.completedAt === undefined ? existing.completed_at : body.completedAt,
+      source: existing.source,
+    });
+    json(res, 200, { ok: true });
+  }
+
+  async function libraryDelete(req, res, id) {
+    requireCsrf(req);
+    const { user } = await requireSession(db, req);
+    const removed = await deleteLibraryEntry(db, user.id, Number(id));
+    if (!removed) throw new HttpError(404, 'That entry does not exist.');
+    json(res, 200, { ok: true });
+  }
+
+  async function libraryExport(req, res) {
+    const { user } = await requireSession(db, req);
+    const entries = await listLibraryEntries(db, user.id);
+    const format = String(new URL(req.url, 'http://placeholder').searchParams.get('format') || 'json');
+    if (format === 'csv') {
+      const header = 'title,type,status,progress,total,score,favourite,notes';
+      const lines = entries.map((entry) => [
+        csvCell(entry.title),
+        entry.chapters != null ? 'manga' : 'anime',
+        entry.status,
+        entry.progress,
+        entry.chapters != null ? entry.chapters : entry.episodes,
+        entry.score == null ? '' : entry.score,
+        entry.favourite ? 'yes' : 'no',
+        csvCell(entry.notes || ''),
+      ].join(','));
+      res.writeHead(200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="aniglobe-library.csv"',
+        'Cache-Control': 'no-store',
+      });
+      res.end([header].concat(lines).join('\n'));
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="aniglobe-library.json"',
+      'Cache-Control': 'no-store',
+    });
+    res.end(JSON.stringify({ exportedAt: new Date().toISOString(), entries }, null, 2));
+  }
+
+  function csvCell(value) {
+    const text = String(value == null ? '' : value);
+    return /[",\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+  }
+
+  async function catalogueSync(req, res) {
+    // Guarded by a shared secret: the crawl must never be triggerable by a
+    // random visitor, and it must not run on the request path for real users.
+    const secret = cronSecret();
+    const provided = String(req.headers['x-cron-secret'] || '');
+    if (!secret || provided !== secret) {
+      throw new HttpError(401, 'Not authorised.');
+    }
+    const url = new URL(req.url, 'http://placeholder');
+    const mediaType = url.searchParams.get('mediaType') === 'manga' ? 'manga' : 'anime';
+    const report = await runCatalogueSync(db, { mediaType });
+    json(res, report.error ? 502 : 200, report);
+  }
+
+  async function catalogueStatus(req, res) {
+    const provider = catalogueProviderId();
+    const last = await getLastSyncRun(db, provider);
+    json(res, 200, {
+      provider,
+      last: last
+        ? {
+            startedAt: last.started_at,
+            finishedAt: last.finished_at,
+            fetched: Number(last.fetched || 0),
+            updated: Number(last.updated || 0),
+            skipped: Number(last.skipped || 0),
+            error: last.error || null,
+          }
+        : null,
+    });
+  }
+
+  function normaliseStatus(value) {
+    const status = String(value || 'PLANNING').toUpperCase();
+    if (!LIBRARY_STATUSES.includes(status)) {
+      throw new HttpError(400, 'Status must be one of: ' + LIBRARY_STATUSES.join(', ') + '.');
+    }
+    return status;
+  }
+
+  function normaliseProgress(value) {
+    const progress = Number(value || 0);
+    if (!Number.isInteger(progress) || progress < 0) {
+      throw new HttpError(400, 'Progress must be a whole number of episodes or chapters.');
+    }
+    return progress;
+  }
+
+  function normaliseScore(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const score = Number(value);
+    if (!Number.isFinite(score) || score < 0 || score > 10) {
+      throw new HttpError(400, 'Score must be between 0 and 10.');
+    }
+    return Math.round(score * 10) / 10;
+  }
+
+  function assertProgressWithinLimit(progress, media) {
+    const limit = media.chapters != null ? media.chapters : media.episodes;
+    if (limit == null || progress <= limit) return;
+    throw new HttpError(400, 'That is more than the ' + (media.chapters != null ? 'chapters' : 'episodes') + ' this title has.');
+  }
+
   const routes = new Map([
     ['/api/auth/register', { POST: register }],
     ['/api/auth/login', { POST: login }],
@@ -790,6 +989,11 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     ['/api/auth/sessions/revoke-all', { POST: revokeAllSessions }],
     ['/api/auth/export', { GET: dataExport }],
     ['/api/auth/profile', { GET: getOwnProfile, PUT: updateOwnProfile }],
+    ['/api/media/search', { GET: mediaSearch }],
+    ['/api/library', { GET: libraryList, POST: libraryCreate }],
+    ['/api/library/export', { GET: libraryExport }],
+    ['/api/catalogue/status', { GET: catalogueStatus }],
+    ['/api/catalogue/sync', { POST: catalogueSync }],
     ['/api/sync/wrapped-prefs', { GET: wrappedPrefs, POST: wrappedPrefs }],
     ['/api/sync/guess', { GET: guess, POST: guess }],
   ]);
@@ -797,6 +1001,39 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   async function handle(req, res) {
     const url = new URL(req.url, 'http://placeholder');
     const pathname = url.pathname;
+
+    // Parameterised paths are matched here (the routes map cannot express
+    // them); order matters: the literal paths are checked first.
+    if (pathname === '/api/media/search') {
+      if (req.method !== 'GET') throw new HttpError(405, 'That method is not supported here.');
+      await mediaSearch(req, res);
+      return;
+    }
+    if (pathname.startsWith('/api/media/')) {
+      const id = pathname.slice('/api/media/'.length);
+      if (req.method !== 'GET') throw new HttpError(405, 'That method is not supported here.');
+      await mediaDetail(req, res, id);
+      return;
+    }
+    if (pathname.startsWith('/api/library/')) {
+      const rest = pathname.slice('/api/library/'.length);
+      if (rest === 'export') {
+        if (req.method !== 'GET') throw new HttpError(405, 'That method is not supported here.');
+        await libraryExport(req, res);
+        return;
+      }
+      if (/^\d+$/u.test(rest)) {
+        if (req.method === 'PUT') {
+          await libraryUpdate(req, res, rest);
+          return;
+        }
+        if (req.method === 'DELETE') {
+          await libraryDelete(req, res, rest);
+          return;
+        }
+        throw new HttpError(405, 'That method is not supported here.');
+      }
+    }
 
     if (pathname === '/api/templates/public' && req.method === 'GET') {
       await publicLibrary(req, res);

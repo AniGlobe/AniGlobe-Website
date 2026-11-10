@@ -20,6 +20,7 @@ export const TOOL_CATEGORIES = [
 
 export const tools = [
   { id: 'card', label: 'AniManga Wrapped', category: 'create', load: () => import('./tools/card.js') },
+  { id: 'my-list', label: 'My List', category: 'create', load: () => import('./tools/my-list.js') },
   { id: 'library', label: 'Template Library', category: 'create', load: () => import('./tools/library.js') },
   { id: 'daily', label: 'Anime Guess', category: 'play', mediaType: 'anime', load: () => import('./tools/daily.js') },
   { id: 'manga-daily', label: 'Manga Guess', category: 'play', mediaType: 'manga', load: () => import('./tools/daily.js') },
