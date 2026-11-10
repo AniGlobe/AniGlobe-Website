@@ -242,6 +242,7 @@ test('catalogue sync trigger requires the cron secret', async () => {
     const { base, close } = server;
     const client = makeClient(base);
     assert.equal((await client.post('/api/catalogue/sync')).status, 401);
+    assert.equal((await client.get('/api/catalogue/sync')).status, 401);
   } finally {
     await server.close();
   }

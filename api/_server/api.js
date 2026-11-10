@@ -936,12 +936,14 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   async function catalogueSync(req, res) {
     // Guarded by a shared secret: the crawl must never be triggerable by a
     // random visitor, and it must not run on the request path for real users.
+    // The secret may arrive as a header (curl) or a query parameter (Vercel
+    // Cron, which only issues GET and cannot set headers).
     const secret = cronSecret();
-    const provided = String(req.headers['x-cron-secret'] || '');
+    const url = new URL(req.url, 'http://placeholder');
+    const provided = String(req.headers['x-cron-secret'] || url.searchParams.get('secret') || '');
     if (!secret || provided !== secret) {
       throw new HttpError(401, 'Not authorised.');
     }
-    const url = new URL(req.url, 'http://placeholder');
     const mediaType = url.searchParams.get('mediaType') === 'manga' ? 'manga' : 'anime';
     const report = await runCatalogueSync(db, { mediaType });
     json(res, report.error ? 502 : 200, report);
@@ -1020,7 +1022,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     ['/api/library', { GET: libraryList, POST: libraryCreate }],
     ['/api/library/export', { GET: libraryExport }],
     ['/api/catalogue/status', { GET: catalogueStatus }],
-    ['/api/catalogue/sync', { POST: catalogueSync }],
+    ['/api/catalogue/sync', { GET: catalogueSync, POST: catalogueSync }],
     ['/api/sync/wrapped-prefs', { GET: wrappedPrefs, POST: wrappedPrefs }],
     ['/api/sync/guess', { GET: guess, POST: guess }],
   ]);
