@@ -102,13 +102,9 @@ export async function runCatalogueSync(db, { providerId, mediaType = 'anime', li
 async function writeMedia(db, media, ttlMs) {
   const shape = snapshotShape(media, ttlMs);
   const tokens = tokeniseTitle(media.titleEn || media.titleRomaji || media.titleNative);
-  let genreTokens = [];
-  try {
-    const parsed = JSON.parse(String(media.genres || '[]'));
-    if (Array.isArray(parsed)) genreTokens = parsed.filter((g) => typeof g === 'string' && g);
-  } catch {
-    genreTokens = [];
-  }
+  const genreTokens = Array.isArray(media.genres)
+    ? media.genres.filter((genre) => typeof genre === 'string' && genre)
+    : [];
   return upsertMedia(db, shape, tokens, genreTokens);
 }
 

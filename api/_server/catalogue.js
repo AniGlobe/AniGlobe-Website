@@ -107,14 +107,28 @@ function ratingOutOfTen(value) {
   return Math.round((number / 10) * 10) / 10;
 }
 
+/** The provider exposes a start date but no season field; derive the usual
+ *  four-season bucket from the release month. */
+function seasonFromStartDate(startDate) {
+  const month = Number(String(startDate || '').slice(5, 7));
+  if (!month) return null;
+  if (month === 12 || month <= 2) return 'WINTER';
+  if (month <= 5) return 'SPRING';
+  if (month <= 8) return 'SUMMER';
+  return 'FALL';
+}
+
 /** JSON:API media resource -> our snapshot shape. */
 export function normaliseMedia(resource, included, providerId, mediaType) {
   const attributes = (resource && resource.attributes) || {};
   const titles = firstTitle(attributes.titles);
   const poster = attributes.posterImage || attributes.coverImage || null;
   const coverUrl = poster ? poster.large || poster.medium || poster.small || poster.original || null : null;
-  const isManga = attributes.subtype === 'MANGA' || attributes.subtype === 'MANHWA' || attributes.subtype === 'NOVEL' || attributes.showType === 'MANGA';
-  const type = mediaType || (isManga ? 'manga' : 'anime');
+  const subtype = String(attributes.subtype || '').toLowerCase();
+  const showType = String(attributes.showType || '').toLowerCase();
+  const detectedManga = subtype === 'manga' || subtype === 'manhwa' || subtype === 'novel' || showType === 'manga';
+  const type = mediaType || (detectedManga ? 'manga' : 'anime');
+  const isManga = type === 'manga';
   return {
     provider: providerId,
     // The provider keeps separate id spaces for anime and manga, so the
@@ -130,7 +144,7 @@ export function normaliseMedia(resource, included, providerId, mediaType) {
     chapters: isManga ? (attributes.chapterCount || null) : null,
     volumes: isManga ? (attributes.volumeCount || null) : null,
     status: attributes.status || null,
-    season: attributes.season || null,
+    season: attributes.season || seasonFromStartDate(attributes.startDate),
     seasonYear: attributes.startDate ? Number(String(attributes.startDate).slice(0, 4)) || null : null,
     averageRating: ratingOutOfTen(attributes.averageRating),
     popularity: attributes.userCount != null ? Number(attributes.userCount) : null,
