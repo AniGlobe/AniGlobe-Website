@@ -108,15 +108,19 @@ function ratingOutOfTen(value) {
 }
 
 /** JSON:API media resource -> our snapshot shape. */
-export function normaliseMedia(resource, included, providerId) {
+export function normaliseMedia(resource, included, providerId, mediaType) {
   const attributes = (resource && resource.attributes) || {};
   const titles = firstTitle(attributes.titles);
   const poster = attributes.posterImage || attributes.coverImage || null;
   const coverUrl = poster ? poster.large || poster.medium || poster.small || poster.original || null : null;
   const isManga = attributes.subtype === 'MANGA' || attributes.subtype === 'MANHWA' || attributes.subtype === 'NOVEL' || attributes.showType === 'MANGA';
+  const type = mediaType || (isManga ? 'manga' : 'anime');
   return {
     provider: providerId,
-    providerId: String(resource.id),
+    // The provider keeps separate id spaces for anime and manga, so the
+    // stored id is namespaced by type to stay unique.
+    providerId: type + ':' + String(resource.id),
+    mediaType: type,
     titleEn: titles.en,
     titleRomaji: titles.romaji,
     titleNative: titles.native,
@@ -166,20 +170,23 @@ export function createCatalogueClient({ providerId } = {}) {
       const data = Array.isArray(payload.data) ? payload.data : [];
       const included = Array.isArray(payload.included) ? payload.included : [];
       return {
-        items: data.map((resource) => normaliseMedia(resource, included, provider.id)),
+        items: data.map((resource) => normaliseMedia(resource, included, provider.id, type)),
         total: payload.meta && payload.meta.count ? Number(payload.meta.count) : data.length,
       };
     },
 
-    /** A single media by provider id. */
+    /** A single media by namespaced provider id ("anime:12"). */
     async getMedia(providerId) {
-      const type = provider.mediaTypes[0];
-      const payload = await fetchPage('/' + type + '/' + encodeURIComponent(providerId), {
+      const raw = String(providerId);
+      const separator = raw.indexOf(':');
+      const type = separator > 0 ? raw.slice(0, separator) : provider.mediaTypes[0];
+      const id = separator > 0 ? raw.slice(separator + 1) : raw;
+      const payload = await fetchPage('/' + type + '/' + encodeURIComponent(id), {
         include: 'genres',
       });
       if (!payload.data) return null;
       const included = Array.isArray(payload.included) ? payload.included : [];
-      return normaliseMedia(payload.data, included, provider.id);
+      return normaliseMedia(payload.data, included, provider.id, type);
     },
 
     /** Text search, used only as a fallback when the snapshot misses. */
@@ -192,7 +199,7 @@ export function createCatalogueClient({ providerId } = {}) {
       });
       const data = Array.isArray(payload.data) ? payload.data : [];
       const included = Array.isArray(payload.included) ? payload.included : [];
-      return data.map((resource) => normaliseMedia(resource, included, provider.id));
+      return data.map((resource) => normaliseMedia(resource, included, provider.id, type));
     },
   };
 }

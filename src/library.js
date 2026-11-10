@@ -3,7 +3,7 @@
  * Signed-in users hit the server; guests keep entries in localStorage.
  */
 
-import { store } from '../lib.js';
+import { store } from './lib.js';
 import { getSession } from './auth.js';
 
 const GUEST_KEY = 'library:entries';
@@ -115,11 +115,16 @@ export async function listLibrary() {
 export async function saveEntry(entry) {
   if (!getSession()) {
     const entries = guestEntries();
-    const media = entry.media;
-    if (!media || !media.id) throw new Error('Pick a title first.');
-    const existing = entries.find((item) => item.mediaId === media.id);
+    const existingIndex = entry.mediaId != null
+      ? entries.findIndex((item) => item.mediaId === entry.mediaId)
+      : -1;
+    const existing = existingIndex >= 0 ? entries[existingIndex] : null;
+    const media = entry.media || existing;
+    // A catalogue result carries `id`; a stored entry carries `mediaId`.
+    const mediaId = media && media.id != null ? media.id : media && media.mediaId;
+    if (mediaId == null) throw new Error('Pick a title first.');
     const record = {
-      mediaId: media.id,
+      mediaId,
       title: media.title,
       titleRomaji: media.titleRomaji || null,
       coverUrl: media.coverUrl || null,
@@ -158,13 +163,15 @@ export async function saveEntry(entry) {
   return listLibrary();
 }
 
-export async function removeEntry(entryId) {
+export async function removeEntry(entry) {
+  const id = entry && typeof entry === 'object' ? entry.id : entry;
+  const mediaId = entry && typeof entry === 'object' ? entry.mediaId : entry;
   if (!getSession()) {
-    const entries = guestEntries().filter((entry) => entry.mediaId !== entryId);
+    const entries = guestEntries().filter((item) => item.mediaId !== mediaId);
     saveGuestEntries(entries);
     return { entries, stats: guestStats(entries) };
   }
-  await request('/api/library/' + encodeURIComponent(entryId), { method: 'DELETE' });
+  await request('/api/library/' + encodeURIComponent(id), { method: 'DELETE' });
   return listLibrary();
 }
 

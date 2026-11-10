@@ -185,6 +185,8 @@ const MIGRATIONS = [
   async (db) => {
     // Catalogue snapshot (we own it; providers are only read on a miss).
     // media.id is our own surrogate key; provider ids live in media_id_map.
+    // provider_id is namespaced by type ("anime:12") because the provider
+    // keeps separate id spaces for anime and manga.
     return [
       `CREATE TABLE IF NOT EXISTS media (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -226,6 +228,13 @@ const MIGRATIONS = [
         PRIMARY KEY (token, media_id)
       )`,
       'CREATE INDEX IF NOT EXISTS media_search_tokens_media_idx ON media_search_tokens (media_id)',
+      'CREATE INDEX IF NOT EXISTS media_search_tokens_token_idx ON media_search_tokens (token)',
+      `CREATE TABLE IF NOT EXISTS media_genre_tokens (
+        genre TEXT NOT NULL,
+        media_id INTEGER NOT NULL REFERENCES media (id) ON DELETE CASCADE,
+        PRIMARY KEY (genre, media_id)
+      )`,
+      'CREATE INDEX IF NOT EXISTS media_genre_tokens_genre_idx ON media_genre_tokens (genre)',
       `CREATE TABLE IF NOT EXISTS library_entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
@@ -267,6 +276,21 @@ const MIGRATIONS = [
         error TEXT
       )`,
     ];
+  },
+  async (db) => {
+    // Browsing needs a media type and indexed filter columns, otherwise a
+    // "browse by year/genre" query scans the whole snapshot.
+    const statements = [];
+    if (!(await hasColumn(db, 'media', 'media_type'))) {
+      statements.push('ALTER TABLE media ADD COLUMN media_type TEXT');
+    }
+    statements.push('CREATE INDEX IF NOT EXISTS media_type_idx ON media (media_type)');
+    statements.push('CREATE INDEX IF NOT EXISTS media_year_idx ON media (media_type, season_year)');
+    statements.push('CREATE INDEX IF NOT EXISTS media_popularity_idx ON media (media_type, popularity)');
+    statements.push('CREATE INDEX IF NOT EXISTS media_rating_idx ON media (media_type, average_rating)');
+    statements.push('CREATE INDEX IF NOT EXISTS media_format_idx ON media (media_type, format)');
+    statements.push('CREATE INDEX IF NOT EXISTS media_season_idx ON media (media_type, season, season_year)');
+    return statements;
   },
 ];
 
@@ -696,7 +720,7 @@ export async function getMediaById(db, id) {
  * Insert or refresh a snapshot row and its search tokens.
  * Tokens are replaced wholesale so a title change cannot leave stale rows.
  */
-export async function upsertMedia(db, media, tokens) {
+export async function upsertMedia(db, media, tokens, genreTokens = []) {
   const at = nowIso();
   const existing = await getMediaByProviderId(db, media.provider, media.providerId);
   if (existing) {
@@ -706,19 +730,24 @@ export async function upsertMedia(db, media, tokens) {
         format = ?, subtype = ?, episodes = ?, chapters = ?, volumes = ?,
         media_status = ?, season = ?, season_year = ?, average_rating = ?,
         popularity = ?, genres = ?, cover_url = ?, synopsis = ?, nsfw = ?,
-        updated_at = ?, fetched_at = ?, expires_at = ?
+        media_type = ?, updated_at = ?, fetched_at = ?, expires_at = ?
       WHERE id = ?
     `, [
       media.titleEn, media.titleRomaji, media.titleNative, media.titleNorm,
       media.format, media.subtype, media.episodes, media.chapters, media.volumes,
       media.status, media.season, media.seasonYear, media.averageRating,
       media.popularity, media.genres, media.coverUrl, media.synopsis,
-      media.nsfw ? 1 : 0, media.updatedAt || null, at, media.expiresAt || null,
+      media.nsfw ? 1 : 0, media.mediaType || null,
+      media.updatedAt || null, at, media.expiresAt || null,
       existing.id,
     ]);
     await runWrite(db, 'DELETE FROM media_search_tokens WHERE media_id = ?', [existing.id]);
+    await runWrite(db, 'DELETE FROM media_genre_tokens WHERE media_id = ?', [existing.id]);
     for (const token of tokens) {
       await runWrite(db, 'INSERT OR IGNORE INTO media_search_tokens (token, media_id) VALUES (?, ?)', [token, existing.id]);
+    }
+    for (const genre of genreTokens) {
+      await runWrite(db, 'INSERT OR IGNORE INTO media_genre_tokens (genre, media_id) VALUES (?, ?)', [genre, existing.id]);
     }
     return existing.id;
   }
@@ -743,6 +772,7 @@ export async function upsertMedia(db, media, tokens) {
     cover_url: media.coverUrl,
     synopsis: media.synopsis,
     nsfw: media.nsfw ? 1 : 0,
+    media_type: media.mediaType || null,
     fetched_at: at,
     updated_at: media.updatedAt || null,
     expires_at: media.expiresAt || null,
@@ -751,31 +781,38 @@ export async function upsertMedia(db, media, tokens) {
   for (const token of tokens) {
     await runWrite(db, 'INSERT OR IGNORE INTO media_search_tokens (token, media_id) VALUES (?, ?)', [token, id]);
   }
+  for (const genre of genreTokens) {
+    await runWrite(db, 'INSERT OR IGNORE INTO media_genre_tokens (genre, media_id) VALUES (?, ?)', [genre, id]);
+  }
   return id;
 }
 
 /** Snapshot rows for the writer: provider ids above the watermark, oldest first. */
-export async function listMediaIdsForSync(db, provider, afterId, limit) {
+export async function listMediaIdsForSync(db, provider, mediaType, afterId, limit) {
   const rows = await getRows(db, `
     SELECT provider_id FROM media
-    WHERE provider = ? AND CAST(provider_id AS INTEGER) > ?
-    ORDER BY CAST(provider_id AS INTEGER) ASC LIMIT ?
-  `, [provider, String(afterId || 0), limit]);
+    WHERE provider = ? AND media_type = ?
+      AND CAST(SUBSTR(provider_id, INSTR(provider_id, ':') + 1) AS INTEGER) > ?
+    ORDER BY CAST(SUBSTR(provider_id, INSTR(provider_id, ':') + 1) AS INTEGER) ASC LIMIT ?
+  `, [provider, mediaType, Number(afterId || 0), limit]);
   return rows.map((row) => row.provider_id);
 }
 
-export async function getSyncWatermark(db, provider) {
-  const row = await getRow(db, 'SELECT MAX(CAST(provider_id AS INTEGER)) AS mark FROM media WHERE provider = ?', [provider]);
+export async function getSyncWatermark(db, provider, mediaType) {
+  const row = await getRow(db, `
+    SELECT MAX(CAST(SUBSTR(provider_id, INSTR(provider_id, ':') + 1) AS INTEGER)) AS mark
+    FROM media WHERE provider = ? AND media_type = ?
+  `, [provider, mediaType]);
   return Number(row && row.mark ? row.mark : 0);
 }
 
 /** Media whose snapshot has expired, so the writer refreshes them. */
-export async function listStaleMedia(db, provider, now, limit) {
+export async function listStaleMedia(db, provider, mediaType, now, limit) {
   const rows = await getRows(db, `
     SELECT provider_id FROM media
-    WHERE provider = ? AND (expires_at IS NULL OR expires_at <= ?)
-    ORDER BY CAST(provider_id AS INTEGER) ASC LIMIT ?
-  `, [provider, now, limit]);
+    WHERE provider = ? AND media_type = ? AND (expires_at IS NULL OR expires_at <= ?)
+    ORDER BY CAST(SUBSTR(provider_id, INSTR(provider_id, ':') + 1) AS INTEGER) ASC LIMIT ?
+  `, [provider, mediaType, now, limit]);
   return rows.map((row) => row.provider_id);
 }
 

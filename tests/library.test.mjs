@@ -80,9 +80,12 @@ function makeClient(base) {
 }
 
 function seedMedia(db, overrides = {}) {
+  const providerId = String(overrides.providerId || 'anime:1');
+  const mediaType = providerId.includes(':') ? providerId.split(':')[0] : 'anime';
   const media = {
     provider: 'kitsu',
-    providerId: String(overrides.providerId || 1),
+    providerId,
+    mediaType,
     titleEn: overrides.titleEn || 'Cowboy Bebop',
     titleRomaji: overrides.titleRomaji || 'Cowboy Bebop',
     titleNative: null,
@@ -104,7 +107,7 @@ function seedMedia(db, overrides = {}) {
     updatedAt: null,
     expiresAt: null,
   };
-  return upsertMedia(db, media, tokeniseTitle(media.titleEn));
+  return upsertMedia(db, media, tokeniseTitle(media.titleEn), ['Action', 'Space']);
 }
 
 test('catalogue snapshot stores media and finds it by token and prefix', async () => {
@@ -254,6 +257,44 @@ test('media detail endpoint returns the snapshot row and 404s for unknown ids', 
     assert.equal(detail.status, 200);
     assert.equal(detail.json.media.title, 'Cowboy Bebop');
     assert.equal((await client.get('/api/media/999999')).status, 404);
+  } finally {
+    await server.close();
+  }
+});
+
+test('browse endpoint filters, sorts, and paginates the snapshot', async () => {
+  const server = await startTestServer();
+  try {
+    const { db, base, close } = server;
+    await seedMedia(db, { providerId: 'anime:1', titleEn: 'Cowboy Bebop', episodes: 26, year: 1998 });
+    await seedMedia(db, { providerId: 'anime:2', titleEn: 'Naruto', episodes: 220, year: 2002 });
+    await seedMedia(db, { providerId: 'manga:1', titleEn: 'Berserk', chapters: 374, year: 1989 });
+
+    const client = makeClient(base);
+    const all = await client.get('/api/media/browse?type=anime');
+    assert.equal(all.status, 200);
+    assert.equal(all.json.total, 2);
+    assert.equal(all.json.items.length, 2);
+    assert.equal(all.json.items[0].mediaType, 'anime');
+    assert.ok(all.json.facets.formats.length >= 1);
+
+    const manga = await client.get('/api/media/browse?type=manga');
+    assert.equal(manga.json.total, 1);
+    assert.equal(manga.json.items[0].title, 'Berserk');
+
+    const byYear = await client.get('/api/media/browse?type=anime&year=2002');
+    assert.equal(byYear.json.total, 1);
+    assert.equal(byYear.json.items[0].title, 'Naruto');
+
+    const byGenre = await client.get('/api/media/browse?type=anime&genre=Action');
+    assert.equal(byGenre.json.total, 2);
+
+    const sorted = await client.get('/api/media/browse?type=anime&sort=title');
+    assert.equal(sorted.json.items[0].title, 'Cowboy Bebop');
+
+    const paged = await client.get('/api/media/browse?type=anime&limit=1&offset=0');
+    assert.equal(paged.json.items.length, 1);
+    assert.equal(paged.json.total, 2);
   } finally {
     await server.close();
   }

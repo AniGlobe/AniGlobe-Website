@@ -13,6 +13,7 @@ import {
   saveEntry,
   searchCatalogue,
 } from '../library.js';
+import { openEntryEditor } from './entry-editor.js';
 import { getSession } from '../auth.js';
 
 const SEARCH_DEBOUNCE_MS = 280;
@@ -69,7 +70,7 @@ export default {
     const resultsWrap = el('section', { class: 'my-list-search-panel', hidden: true },
       el('h2', { class: 'panel-title' }, 'Results'),
       resultsList);
-    const libraryList = el('ul', { class: 'my-list-entries' });
+    const libraryList = el('ul', { class: 'my-list-entries', id: 'my-list-entries', tabindex: '-1' });
     const statsWrap = el('div', { class: 'my-list-stats' });
     const libraryEmpty = el('p', { class: 'account-danger-note' }, 'Nothing tracked yet. Search for a title above and add it to your list.');
     const exportButton = el('button', { class: 'btn btn-outline btn-sm', type: 'button' }, 'Export my list');
@@ -127,11 +128,37 @@ export default {
         ...entries.map((entry) => {
           const total = entryTotal(entry);
           const progressLabel = total != null ? entry.progress + ' / ' + total : String(entry.progress);
+          const open = el(
+            'button',
+            { class: 'my-list-entry-main', type: 'button', 'aria-label': 'Edit ' + entry.title },
+            entry.coverUrl
+              ? el('img', { class: 'my-list-cover', src: entry.coverUrl, alt: '', loading: 'lazy' })
+              : el('span', { class: 'my-list-cover is-empty', 'aria-hidden': 'true' }),
+            el(
+              'span',
+              { class: 'my-list-entry-text' },
+              el('span', { class: 'my-list-entry-title' }, entry.title),
+              el('span', { class: 'my-list-entry-meta' },
+                (STATUS_LABELS[entry.status] || entry.status) + ' · ' + progressLabel + (entry.score != null ? ' · ' + entry.score + '/10' : '') + (entry.year ? ' · ' + entry.year : ''))
+            )
+          );
+          open.addEventListener('click', () => {
+            const editor = openEntryEditor(entry, {
+              onSaved: (next) => {
+                state.entries = next.entries;
+                state.stats = next.stats;
+                renderLibrary();
+                renderStats();
+              },
+              onStatus: (message) => setStatus(status, message, 'info'),
+            });
+            editor.setTrigger(open);
+          });
           const remove = el('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, 'Remove');
           remove.addEventListener('click', async () => {
             remove.disabled = true;
             try {
-              const next = await removeEntry(entry.mediaId);
+              const next = await removeEntry({ id: entry.id, mediaId: entry.mediaId });
               state.entries = next.entries;
               state.stats = next.stats;
               renderLibrary();
@@ -145,20 +172,7 @@ export default {
           return el(
             'li',
             { class: 'my-list-entry' },
-            el(
-              'button',
-              { class: 'my-list-entry-main', type: 'button' },
-              entry.coverUrl
-                ? el('img', { class: 'my-list-cover', src: entry.coverUrl, alt: '', loading: 'lazy' })
-                : el('span', { class: 'my-list-cover is-empty', 'aria-hidden': 'true' }),
-              el(
-                'span',
-                { class: 'my-list-entry-text' },
-                el('span', { class: 'my-list-entry-title' }, entry.title),
-                el('span', { class: 'my-list-entry-meta' },
-                  (STATUS_LABELS[entry.status] || entry.status) + ' · ' + progressLabel + (entry.score != null ? ' · ' + entry.score + '/10' : '') + (entry.year ? ' · ' + entry.year : ''))
-              )
-            ),
+            open,
             remove
           );
         })

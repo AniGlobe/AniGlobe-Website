@@ -68,10 +68,15 @@ export function serveStatic(req, res, pathname) {
     return;
   }
   const type = MIME_TYPES[extname(resolved).toLowerCase()] || 'application/octet-stream';
+  const isProduction = process.env.NODE_ENV === 'production';
   const headers = {
     'Content-Type': type,
-    // JS/CSS get a short cache so updates ship quickly; everything else no-store.
-    'Cache-Control': /\.(js|css|json)$/.test(resolved) ? 'public, max-age=300' : 'no-store',
+    // Production: JS/CSS/JSON get a short cache so updates ship quickly.
+    // Development: no-store, so an edited module is never served stale
+    // (a cached module keeps failing after a fix and looks like a code bug).
+    'Cache-Control': !isProduction
+      ? 'no-store'
+      : (/\.(js|css|json)$/.test(resolved) ? 'public, max-age=300' : 'no-store'),
     ...securityHeaders(),
   };
   res.writeHead(200, headers);

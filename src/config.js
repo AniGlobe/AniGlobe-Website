@@ -15,6 +15,7 @@ export const runtime = {
 
 export const TOOL_CATEGORIES = [
   { id: 'create', label: 'Create' },
+  { id: 'discover', label: 'Discover' },
   { id: 'play', label: 'Play' },
 ];
 
@@ -22,6 +23,7 @@ export const tools = [
   { id: 'card', label: 'AniManga Wrapped', category: 'create', load: () => import('./tools/card.js') },
   { id: 'my-list', label: 'My List', category: 'create', load: () => import('./tools/my-list.js') },
   { id: 'library', label: 'Template Library', category: 'create', load: () => import('./tools/library.js') },
+  { id: 'browse', label: 'Browse', category: 'discover', load: () => import('./tools/browse.js') },
   { id: 'daily', label: 'Anime Guess', category: 'play', mediaType: 'anime', load: () => import('./tools/daily.js') },
   { id: 'manga-daily', label: 'Manga Guess', category: 'play', mediaType: 'manga', load: () => import('./tools/daily.js') },
   { id: 'account', label: 'Account', hidden: true, category: 'account', load: () => import('./tools/account.js') },

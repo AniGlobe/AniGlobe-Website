@@ -39,7 +39,7 @@ import {
   listLibraryEntries,
   upsertLibraryEntry,
 } from './db.js';
-import { getSnapshotMedia, runCatalogueSync, searchSnapshot } from './catalogue-store.js';
+import { getSnapshotMedia, runCatalogueSync, searchSnapshot, browseMedia, browseFacets } from './catalogue-store.js';
 import { googleEnabled, GOOGLE_PROVIDER, callbackUrl, googleAuthorizationUrl, exchangeGoogleCode } from './oauth.js';
 import { currentStreak, bestStreak } from '../../src/domain/streak.js';
 import {
@@ -785,6 +785,32 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
 
   /* ------------------------------------------------------- catalogue + list */
 
+  async function mediaBrowse(req, res) {
+    const url = new URL(req.url, 'http://placeholder');
+    const mediaType = url.searchParams.get('type') === 'manga' ? 'manga' : (url.searchParams.get('type') === 'anime' ? 'anime' : null);
+    const limit = Math.min(60, Math.max(1, Number(url.searchParams.get('limit')) || 24));
+    const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+    const sort = String(url.searchParams.get('sort') || 'popularity');
+    const genre = url.searchParams.get('genre');
+    const year = url.searchParams.get('year');
+    const format = url.searchParams.get('format');
+    const season = url.searchParams.get('season');
+    const status = url.searchParams.get('status');
+    const page = await browseMedia(db, {
+      mediaType,
+      genre: genre || null,
+      format: format || null,
+      year: year ? Number(year) : null,
+      season: season || null,
+      status: status || null,
+      sort,
+      limit,
+      offset,
+    });
+    const facets = await browseFacets(db, mediaType);
+    json(res, 200, { ...page, facets, limit, offset });
+  }
+
   async function mediaSearch(req, res) {
     const url = new URL(req.url, 'http://placeholder');
     const query = String(url.searchParams.get('q') || '').trim();
@@ -990,6 +1016,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     ['/api/auth/export', { GET: dataExport }],
     ['/api/auth/profile', { GET: getOwnProfile, PUT: updateOwnProfile }],
     ['/api/media/search', { GET: mediaSearch }],
+    ['/api/media/browse', { GET: mediaBrowse }],
     ['/api/library', { GET: libraryList, POST: libraryCreate }],
     ['/api/library/export', { GET: libraryExport }],
     ['/api/catalogue/status', { GET: catalogueStatus }],
@@ -1007,6 +1034,11 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     if (pathname === '/api/media/search') {
       if (req.method !== 'GET') throw new HttpError(405, 'That method is not supported here.');
       await mediaSearch(req, res);
+      return;
+    }
+    if (pathname === '/api/media/browse') {
+      if (req.method !== 'GET') throw new HttpError(405, 'That method is not supported here.');
+      await mediaBrowse(req, res);
       return;
     }
     if (pathname.startsWith('/api/media/')) {

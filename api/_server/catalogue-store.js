@@ -42,9 +42,9 @@ export async function runCatalogueSync(db, { providerId, mediaType = 'anime', li
   const report = { provider: provider.id, startedAt, finishedAt: null, fetched: 0, updated: 0, skipped: 0, error: null };
 
   try {
-    const watermark = await getSyncWatermark(db, provider.id);
-    const fresh = await listMediaIdsForSync(db, provider.id, watermark, limit);
-    const stale = await listStaleMedia(db, provider.id, new Date().toISOString(), limit);
+    const watermark = await getSyncWatermark(db, provider.id, mediaType);
+    const fresh = await listMediaIdsForSync(db, provider.id, mediaType, watermark, limit);
+    const stale = await listStaleMedia(db, provider.id, mediaType, new Date().toISOString(), limit);
     const seen = new Set();
     const ids = [];
     for (const id of [...fresh, ...stale]) {
@@ -102,7 +102,117 @@ export async function runCatalogueSync(db, { providerId, mediaType = 'anime', li
 async function writeMedia(db, media, ttlMs) {
   const shape = snapshotShape(media, ttlMs);
   const tokens = tokeniseTitle(media.titleEn || media.titleRomaji || media.titleNative);
-  return upsertMedia(db, shape, tokens);
+  let genreTokens = [];
+  try {
+    const parsed = JSON.parse(String(media.genres || '[]'));
+    if (Array.isArray(parsed)) genreTokens = parsed.filter((g) => typeof g === 'string' && g);
+  } catch {
+    genreTokens = [];
+  }
+  return upsertMedia(db, shape, tokens, genreTokens);
+}
+
+/**
+ * Browse the snapshot with filters, sorting, and pagination.
+ * Every filter is served by an index (media_type, season_year, popularity,
+ * average_rating, format, season, genre token table) so a browse never
+ * scans the whole catalogue.
+ */
+export async function browseMedia(db, {
+  mediaType = null,
+  genre = null,
+  format = null,
+  year = null,
+  season = null,
+  status = null,
+  sort = 'popularity',
+  limit = 24,
+  offset = 0,
+} = {}) {
+  const where = [];
+  const args = [];
+
+  if (mediaType) {
+    where.push('m.media_type = ?');
+    args.push(mediaType);
+  }
+  if (year) {
+    where.push('m.season_year = ?');
+    args.push(Number(year));
+  }
+  if (format) {
+    where.push('m.format = ?');
+    args.push(format);
+  }
+  if (season) {
+    where.push('m.season = ?');
+    args.push(season);
+  }
+  if (status) {
+    where.push('m.media_status = ?');
+    args.push(status);
+  }
+
+  let join = '';
+  if (genre) {
+    join = 'JOIN media_genre_tokens g ON g.media_id = m.id AND g.genre = ?';
+    args.unshift(genre);
+  }
+
+  const order = {
+    popularity: 'm.popularity DESC NULLS LAST',
+    rating: 'm.average_rating DESC NULLS LAST',
+    year: 'm.season_year DESC NULLS LAST',
+    title: 'm.title_norm ASC',
+    newest: 'm.id DESC',
+  }[sort] || 'm.popularity DESC NULLS LAST';
+
+  const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const safeOrder = order.replace(/NULLS LAST/g, '');
+
+  const countRow = await db.execute(
+    `SELECT COUNT(*) AS n FROM media m ${join} ${clause}`,
+    args
+  );
+  const total = Number(countRow.rows[0] ? countRow.rows[0].n : 0);
+
+  const rows = await db.execute(
+    `SELECT m.* FROM media m ${join} ${clause} ORDER BY ${safeOrder} LIMIT ? OFFSET ?`,
+    [...args, limit, offset]
+  );
+
+  return {
+    total,
+    items: rows.rows.map((row) => shapeMedia(row)),
+  };
+}
+
+/** Distinct values for the browse filters, from the snapshot itself. */
+export async function browseFacets(db, mediaType = null) {
+  const typeClause = mediaType ? 'WHERE media_type = ?' : '';
+  const typeArgs = mediaType ? [mediaType] : [];
+  const formats = await db.execute(
+    `SELECT format AS value, COUNT(*) AS n FROM media ${typeClause} AND format IS NOT NULL GROUP BY format ORDER BY n DESC LIMIT 12`,
+    typeArgs
+  );
+  const years = await db.execute(
+    `SELECT season_year AS value, COUNT(*) AS n FROM media ${typeClause ? typeClause + ' AND' : 'WHERE'} season_year IS NOT NULL GROUP BY season_year ORDER BY season_year DESC LIMIT 20`,
+    typeArgs
+  );
+  const genres = await db.execute(
+    `SELECT g.genre AS value, COUNT(*) AS n FROM media_genre_tokens g JOIN media m ON m.id = g.media_id ${mediaType ? 'WHERE m.media_type = ?' : ''} GROUP BY g.genre ORDER BY n DESC LIMIT 24`,
+    typeArgs
+  );
+  const seasons = await db.execute(
+    `SELECT season AS value, COUNT(*) AS n FROM media ${typeClause ? typeClause + ' AND' : 'WHERE'} season IS NOT NULL GROUP BY season ORDER BY n DESC`,
+    typeArgs
+  );
+  return {
+    formats: formats.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
+    years: years.rows.map((row) => ({ value: Number(row.value), count: Number(row.n) })),
+    genres: genres.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
+    seasons: seasons.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
+  };
 }
 
 /**
@@ -153,6 +263,7 @@ export function shapeMedia(row) {
     id: row.id,
     provider: row.provider,
     providerId: row.provider_id,
+    mediaType: row.media_type || null,
     title: row.title_en || row.title_romaji || row.title_native || 'Untitled',
     titleRomaji: row.title_romaji,
     titleNative: row.title_native,
