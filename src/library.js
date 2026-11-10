@@ -69,7 +69,18 @@ export async function getMedia(id) {
 
 function guestEntries() {
   const stored = store.get(GUEST_KEY, []);
-  return Array.isArray(stored) ? stored : [];
+  if (!Array.isArray(stored)) return [];
+  // One entry per title: older saves could hold duplicates, so collapse them
+  // and keep the most recently updated copy.
+  const byMedia = new Map();
+  for (const entry of stored) {
+    if (!entry || entry.mediaId == null) continue;
+    const existing = byMedia.get(entry.mediaId);
+    if (!existing || String(entry.updatedAt || '') > String(existing.updatedAt || '')) {
+      byMedia.set(entry.mediaId, entry);
+    }
+  }
+  return [...byMedia.values()];
 }
 
 function saveGuestEntries(entries) {
@@ -102,6 +113,9 @@ function guestStats(entries) {
 export async function listLibrary() {
   if (!getSession()) {
     const entries = guestEntries();
+    // Self-heal storage if older saves held duplicates.
+    const stored = store.get(GUEST_KEY, []);
+    if (Array.isArray(stored) && stored.length !== entries.length) saveGuestEntries(entries);
     return { entries, stats: guestStats(entries), guest: true };
   }
   const payload = await request('/api/library');
@@ -115,12 +129,15 @@ export async function listLibrary() {
 export async function saveEntry(entry) {
   if (!getSession()) {
     const entries = guestEntries();
-    const existingIndex = entry.mediaId != null
-      ? entries.findIndex((item) => item.mediaId === entry.mediaId)
+    // A catalogue result carries `id`; a stored entry carries `mediaId`.
+    const lookupId = entry.mediaId != null
+      ? entry.mediaId
+      : (entry.media && entry.media.id != null ? entry.media.id : null);
+    const existingIndex = lookupId != null
+      ? entries.findIndex((item) => item.mediaId === lookupId)
       : -1;
     const existing = existingIndex >= 0 ? entries[existingIndex] : null;
     const media = entry.media || existing;
-    // A catalogue result carries `id`; a stored entry carries `mediaId`.
     const mediaId = media && media.id != null ? media.id : media && media.mediaId;
     if (mediaId == null) throw new Error('Pick a title first.');
     const record = {
