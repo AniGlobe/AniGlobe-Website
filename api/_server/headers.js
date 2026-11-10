@@ -14,7 +14,7 @@ export const CSP = [
   "script-src 'self' https://unpkg.com",
   "style-src 'self' https://fonts.googleapis.com https://use.typekit.net",
   "font-src 'self' https://fonts.gstatic.com https://use.typekit.net",
-  "img-src 'self' data: https://media.kitsu.io",
+  "img-src 'self' data: https://media.kitsu.app https://media.kitsu.io",
   "connect-src 'self' https://jikan.lucashdo.com https://graphql.anilist.co",
   "object-src 'none'",
   "frame-ancestors 'none'",

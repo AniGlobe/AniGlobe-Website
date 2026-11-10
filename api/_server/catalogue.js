@@ -91,10 +91,20 @@ function firstTitle(titles) {
 
 function genreNames(included) {
   if (!Array.isArray(included)) return [];
+  // The provider exposes `genres` (a handful of broad genres, attribute
+  // `name`) and `categories` (dozens of fine-grained tags, attribute
+  // `title`). We store the broad genres only.
   const names = included
-    .filter((item) => item && item.type === 'categories' && item.attributes && item.attributes.name)
+    .filter((item) => item && item.type === 'genres' && item.attributes && item.attributes.name)
     .map((item) => item.attributes.name);
   return [...new Set(names)];
+}
+
+/** Kitsu rates on a 0-100 scale; the product uses 0-10 everywhere. */
+function ratingOutOfTen(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  return Math.round((number / 10) * 10) / 10;
 }
 
 /** JSON:API media resource -> our snapshot shape. */
@@ -118,7 +128,7 @@ export function normaliseMedia(resource, included, providerId) {
     status: attributes.status || null,
     season: attributes.season || null,
     seasonYear: attributes.startDate ? Number(String(attributes.startDate).slice(0, 4)) || null : null,
-    averageRating: attributes.averageRating != null ? Number(attributes.averageRating) : null,
+    averageRating: ratingOutOfTen(attributes.averageRating),
     popularity: attributes.userCount != null ? Number(attributes.userCount) : null,
     genres: genreNames(included),
     coverUrl,
@@ -145,14 +155,13 @@ export function createCatalogueClient({ providerId } = {}) {
     /** One page of media, newest ids first, plus the total count. */
     async listMedia({ mediaType = 'anime', offset = 0, limit = provider.pageSize } = {}) {
       const type = provider.mediaTypes.includes(mediaType) ? mediaType : 'anime';
-      const fields = 'titles,canonicalTitle,subtype,showType,episodeCount,chapterCount,volumeCount,status,startDate,averageRating,userCount,synopsis,nsfw,posterImage,coverImage,updatedAt';
-      const fieldsParam = 'fields[' + type + ']';
+      // No `fields[...]` selection: the provider rejects unknown field names
+      // with a 400, and the full payload is what we store anyway.
       const payload = await fetchPage('/' + type, {
         'page[limit]': limit,
         'page[offset]': offset,
         sort: 'id',
-        [fieldsParam]: fields,
-        include: 'categories',
+        include: 'genres',
       });
       const data = Array.isArray(payload.data) ? payload.data : [];
       const included = Array.isArray(payload.included) ? payload.included : [];
@@ -166,7 +175,7 @@ export function createCatalogueClient({ providerId } = {}) {
     async getMedia(providerId) {
       const type = provider.mediaTypes[0];
       const payload = await fetchPage('/' + type + '/' + encodeURIComponent(providerId), {
-        include: 'categories',
+        include: 'genres',
       });
       if (!payload.data) return null;
       const included = Array.isArray(payload.included) ? payload.included : [];
@@ -179,7 +188,7 @@ export function createCatalogueClient({ providerId } = {}) {
       const payload = await fetchPage('/' + type, {
         'filter[text]': query,
         'page[limit]': limit,
-        include: 'categories',
+        include: 'genres',
       });
       const data = Array.isArray(payload.data) ? payload.data : [];
       const included = Array.isArray(payload.included) ? payload.included : [];
