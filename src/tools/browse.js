@@ -71,6 +71,9 @@ export default {
     const sortSelect = el('select', { id: 'browse-sort', 'aria-label': 'Sort by' },
       ...SORTS.map((sort) => el('option', { value: sort.value }, sort.label)));
     const clearButton = el('button', { class: 'btn btn-quiet btn-sm', type: 'button' }, 'Clear filters');
+    const advancedButton = el('button', { class: 'btn btn-outline btn-sm browse-advanced-trigger', type: 'button', 'aria-haspopup': 'dialog' },
+      'Advanced filters',
+      el('span', { class: 'browse-trigger-count', hidden: true }));
     const activeFilters = el('p', { class: 'browse-active', 'aria-live': 'polite' });
     const grid = el('div', { class: 'browse-grid' });
     const resultCount = el('p', { class: 'browse-count' });
@@ -79,6 +82,59 @@ export default {
     const pager = el('div', { class: 'browse-pager' }, previousButton, resultCount, nextButton);
     const emptyState = el('p', { class: 'account-danger-note' },
       'The catalogue is empty. It fills itself as the daily sync runs, so check back later or search by title above.');
+
+    // The multi-select parts live in their own dialog so the page keeps a
+    // short row of basic filters and the results stay in view.
+    const advancedCount = el('p', { class: 'browse-advanced-count', 'aria-live': 'polite' });
+    const advancedDialog = el(
+      'dialog',
+      { class: 'auth-dialog browse-advanced', 'aria-labelledby': 'browse-advanced-title' },
+      el('div', { class: 'auth-dialog-head' },
+        el('div', {},
+          el('h2', { id: 'browse-advanced-title', class: 'auth-dialog-title' }, 'Advanced filters'),
+          el('p', { class: 'auth-dialog-subtitle' }, 'Pick as many genres as you like. Titles match any of them.')),
+        el('button', { class: 'auth-dialog-close', type: 'button', 'aria-label': 'Close advanced filters' }, '×')),
+      el('div', { class: 'browse-advanced-body' },
+        el('div', { class: 'browse-advanced-block' },
+          el('span', { class: 'browse-label' }, 'Genres'),
+          genreChips),
+        el('div', { class: 'field browse-advanced-score' },
+          el('label', { for: 'browse-score' }, 'Minimum score'),
+          scoreSelect),
+        advancedCount),
+      el('div', { class: 'browse-advanced-foot' },
+        el('button', { class: 'btn btn-quiet btn-sm browse-advanced-clear', type: 'button' }, 'Clear advanced'),
+        el('button', { class: 'btn btn-primary btn-sm browse-advanced-done', type: 'button' }, 'Done'))
+    );
+    document.body.append(advancedDialog);
+    // One close path for every exit, so focus always lands back on the
+    // button that opened the panel.
+    function closeAdvanced() {
+      advancedDialog.close();
+      advancedButton.focus();
+    }
+    advancedDialog.querySelector('.auth-dialog-close').addEventListener('click', closeAdvanced);
+    advancedDialog.querySelector('.browse-advanced-clear').addEventListener('click', () => {
+      filters.genres = [];
+      filters.minScore = '';
+      scoreSelect.value = '';
+      resetAndLoad();
+    });
+    advancedDialog.querySelector('.browse-advanced-done').addEventListener('click', closeAdvanced);
+    // Escape closes the panel. The browser also closes a modal dialog on
+    // Escape, so both paths have to end with focus on the trigger.
+    advancedDialog.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeAdvanced();
+    });
+    advancedDialog.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      closeAdvanced();
+    });
+    advancedDialog.addEventListener('close', () => {
+      setTimeout(() => advancedButton.focus(), 0);
+    });
 
     function paintTypes() {
       render(
@@ -167,6 +223,12 @@ export default {
       if (filters.minScore) parts.push(filters.minScore + '+ rating');
       clearButton.hidden = parts.length === 0;
       activeFilters.textContent = parts.length ? 'Filtering by ' + parts.join(' · ') : '';
+      // The trigger carries the count of advanced picks so the popup is never
+      // a hidden state.
+      const advancedPicks = filters.genres.length + (filters.minScore ? 1 : 0);
+      const badge = advancedButton.querySelector('.browse-trigger-count');
+      badge.hidden = advancedPicks === 0;
+      badge.textContent = String(advancedPicks);
     }
 
     function mediaCard(media) {
@@ -287,6 +349,7 @@ export default {
         resultCount.textContent = total
           ? (filters.offset + 1) + '–' + Math.min(filters.offset + PAGE_SIZE, total) + ' of ' + total
           : '0 titles';
+        advancedCount.textContent = total === 1 ? '1 title matches' : total + ' titles match';
         previousButton.disabled = filters.offset <= 0;
         nextButton.disabled = filters.offset + PAGE_SIZE >= total;
         pager.hidden = total === 0;
@@ -338,11 +401,16 @@ export default {
     statusSelect.addEventListener('change', () => { filters.status = statusSelect.value; resetAndLoad(); });
     scoreSelect.addEventListener('change', () => { filters.minScore = scoreSelect.value; resetAndLoad(); });
     sortSelect.addEventListener('change', () => { filters.sort = sortSelect.value; resetAndLoad(); });
+    advancedButton.addEventListener('click', () => {
+      advancedDialog.showModal();
+      scoreSelect.focus();
+    });
     clearButton.addEventListener('click', () => {
       const keepType = filters.type;
       filters = state();
       filters.type = keepType;
       searchInput.value = '';
+      scoreSelect.value = '';
       paintTypes();
       resetAndLoad();
     });
@@ -371,12 +439,10 @@ export default {
           'div',
           { class: 'browse-search-row' },
           el('div', { class: 'field' }, el('label', { for: 'browse-search' }, 'Search'), searchInput),
+          advancedButton,
           clearButton
         ),
         typePick,
-        el('div', { class: 'browse-genre-block' },
-          el('span', { class: 'browse-label' }, 'Genres'),
-          genreChips),
         el(
           'div',
           { class: 'browse-filters' },
@@ -384,7 +450,6 @@ export default {
           el('div', { class: 'field' }, el('label', { for: 'browse-format' }, 'Format'), formatSelect),
           el('div', { class: 'field' }, el('label', { for: 'browse-season' }, 'Season'), seasonSelect),
           el('div', { class: 'field' }, el('label', { for: 'browse-status' }, 'Status'), statusSelect),
-          el('div', { class: 'field' }, el('label', { for: 'browse-score' }, 'Score'), scoreSelect),
           el('div', { class: 'field' }, el('label', { for: 'browse-sort' }, 'Sort'), sortSelect)
         ),
         activeFilters,
@@ -399,6 +464,8 @@ export default {
     return () => {
       destroyed = true;
       clearTimeout(searchTimer);
+      if (advancedDialog.open) advancedDialog.close();
+      advancedDialog.remove();
     };
   },
 };
