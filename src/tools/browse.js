@@ -283,7 +283,7 @@ export default {
         try {
           await saveEntry({ media, status: 'PLANNING', progress: 0 });
           setStatus(status, 'Added "' + media.title + '" to your list.', 'info');
-          dialog.close();
+          closeSheet();
         } catch (error) {
           setStatus(sheetStatus, error.message || 'Could not add that title.', 'error');
           addButton.disabled = false;
@@ -308,8 +308,26 @@ export default {
         el('div', { class: 'entry-editor-actions' }, addButton)
       );
       document.body.append(dialog);
-      dialog.querySelector('.auth-dialog-close').addEventListener('click', () => dialog.close());
-      dialog.addEventListener('close', () => dialog.remove());
+      // Closing removes the sheet outright, so nothing is left behind in the
+      // body when the browser skips the dialog close event.
+      function closeSheet() {
+        if (dialog.open) dialog.close();
+        dialog.remove();
+      }
+      dialog.querySelector('.auth-dialog-close').addEventListener('click', closeSheet);
+      dialog.addEventListener('click', (event) => {
+        if (event.target === dialog) closeSheet();
+      });
+      dialog.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        closeSheet();
+      });
+      dialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        closeSheet();
+      });
+      dialog.addEventListener('close', closeSheet);
       dialog.showModal();
       addButton.focus();
     }
