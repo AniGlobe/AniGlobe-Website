@@ -8,6 +8,7 @@
 import { el, render, store, copyText, dateKey, dayIndex, hashString, setStatus } from '../lib.js';
 import { fetchDailyPuzzle } from '../providers/mal.js';
 import { getSession, pullGuessProgress, pushGuessProgress } from '../auth.js';
+import { saveEntry, searchCatalogue } from '../library.js';
 import { site } from '../config.js';
 import { resolveMediaType } from '../domain/media.js';
 import { currentStreak } from '../domain/streak.js';
@@ -386,6 +387,11 @@ export default {
         { class: 'btn btn-outline', type: 'button' },
         'Copy result'
       );
+      const addButton = el(
+        'button',
+        { class: 'btn btn-outline', type: 'button' },
+        'Add to my list'
+      );
       render(
         resultBox,
         el(
@@ -405,9 +411,40 @@ export default {
           'div',
           { class: 'daily-result-actions' },
           button,
+          addButton,
           getSession() ? el('a', { class: 'btn btn-quiet', href: '#/account' }, 'See your streak history') : null
         )
       );
+      addButton.addEventListener('click', async () => {
+        addButton.disabled = true;
+        addButton.textContent = 'Looking it up…';
+        try {
+          const title = puzzle.answers[0];
+          const matches = await searchCatalogue(title, { limit: 5 });
+          const wanted = title.toLowerCase();
+          const match = matches.find((m) => String(m.title).toLowerCase() === wanted)
+            || matches.find((m) => String(m.title).toLowerCase().includes(wanted))
+            || matches[0];
+          if (!match) {
+            addButton.textContent = 'Not in the catalogue';
+            addButton.disabled = true;
+            setStatus(status, 'That title is not in the catalogue yet. It fills itself as the daily sync runs.', 'warn');
+            return;
+          }
+          const total = match.chapters != null ? match.chapters : match.episodes;
+          await saveEntry({
+            media: match,
+            status: won ? 'COMPLETED' : 'CURRENT',
+            progress: won ? (total || 0) : 0,
+          });
+          addButton.textContent = 'Added to my list';
+          setStatus(status, 'Added "' + match.title + '" to your list.', 'info');
+        } catch (error) {
+          addButton.disabled = false;
+          addButton.textContent = 'Add to my list';
+          setStatus(status, error.message || 'Could not add that title.', 'error');
+        }
+      });
       button.addEventListener('click', async () => {
         const copied = await copyText(shareText(
           number,
