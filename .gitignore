@@ -30,3 +30,4 @@ data/
 *.db-wal3
 .vercel
 .env*
+.env

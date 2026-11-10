@@ -28,7 +28,7 @@ import {
 } from './http.js';
 import { hashPassword, verifyPassword, dummyVerify } from './passwords.js';
 import { resetPasswordMail, verifyEmailMail, sendMail, originOf } from './mail.js';
-import { catalogueProviderId, cronSecret } from './catalogue-config.js';
+import { catalogueProviderId, cronSecret, requestCronSecret } from './catalogue-config.js';
 import { clearanceSummary } from './provider-clearance.js';
 import {
   getLastSyncRun,
@@ -956,11 +956,10 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   async function catalogueSync(req, res) {
     // Guarded by a shared secret: the crawl must never be triggerable by a
     // random visitor, and it must not run on the request path for real users.
-    // The secret may arrive as a header (curl) or a query parameter (Vercel
-    // Cron, which only issues GET and cannot set headers).
+    // Without CRON_SECRET set on the server, the trigger refuses everything.
     const secret = cronSecret();
     const url = new URL(req.url, 'http://placeholder');
-    const provided = String(req.headers['x-cron-secret'] || url.searchParams.get('secret') || '');
+    const provided = requestCronSecret(req, url);
     if (!secret || provided !== secret) {
       throw new HttpError(401, 'Not authorised.');
     }

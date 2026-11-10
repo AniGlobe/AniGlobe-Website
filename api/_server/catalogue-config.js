@@ -65,3 +65,15 @@ export function syncBatchSize() {
 export function cronSecret() {
   return process.env.CRON_SECRET || '';
 }
+
+/**
+ * The secret a request carries, in any of the three shapes we accept:
+ * the x-cron-secret header (curl), an Authorization: Bearer header (Vercel
+ * Cron sends it that way when CRON_SECRET is set in the project), or a
+ * query parameter (for a platform that can only issue a plain GET).
+ */
+export function requestCronSecret(req, url) {
+  const authorization = String(req.headers.authorization || '');
+  const bearer = authorization.toLowerCase().startsWith('bearer ') ? authorization.slice(7).trim() : '';
+  return String(req.headers['x-cron-secret'] || bearer || url.searchParams.get('secret') || '');
+}

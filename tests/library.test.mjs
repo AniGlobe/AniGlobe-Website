@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { openDatabase, upsertMedia, tokeniseTitle, normaliseTitle } from '../api/_server/db.js';
 import { createApiRouter } from '../api/_server/api.js';
 import { searchSnapshot, shapeMedia } from '../api/_server/catalogue-store.js';
+import { requestCronSecret } from '../api/_server/catalogue-config.js';
 import { clearanceFor, isCleared, requireClearance } from '../api/_server/provider-clearance.js';
 
 const GOOD_PASSWORD = 'Correct-Horse-42!';
@@ -323,6 +324,17 @@ test('catalogue sync trigger requires the cron secret', async () => {
   } finally {
     await server.close();
   }
+});
+
+test('the sync trigger reads the secret from a header, a bearer token, or a query parameter', () => {
+  const url = new URL('http://placeholder/api/catalogue/sync?secret=from-query');
+  assert.equal(requestCronSecret({ headers: { 'x-cron-secret': 'from-header' } }, url), 'from-header');
+  assert.equal(requestCronSecret({ headers: { authorization: 'Bearer from-bearer' } }, url), 'from-bearer');
+  assert.equal(requestCronSecret({ headers: { authorization: 'bearer from-bearer' } }, url), 'from-bearer');
+  assert.equal(requestCronSecret({ headers: {} }, url), 'from-query');
+  assert.equal(requestCronSecret({ headers: {} }, new URL('http://placeholder/api/catalogue/sync')), '');
+  // A header wins over the query parameter when both are present.
+  assert.equal(requestCronSecret({ headers: { 'x-cron-secret': 'from-header' } }, url), 'from-header');
 });
 
 test('media detail endpoint returns the snapshot row and 404s for unknown ids', async () => {

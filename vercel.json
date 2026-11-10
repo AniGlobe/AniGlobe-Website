@@ -8,6 +8,10 @@
     { "source": "/package.json", "destination": "/404" },
     { "source": "/api/(.*)", "destination": "/api/index" }
   ],
+  "crons": [
+    { "path": "/api/catalogue/sync", "schedule": "0 3 * * *" },
+    { "path": "/api/catalogue/sync?mediaType=manga", "schedule": "30 3 * * *" }
+  ],
   "headers": [
     {
       "source": "/(.*)",
