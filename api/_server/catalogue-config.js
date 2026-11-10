@@ -17,7 +17,8 @@ export const CATALOGUE_PROVIDERS = {
   kitsu: {
     id: 'kitsu',
     label: 'Kitsu',
-    baseUrl: process.env.KITSUU_BASE_URL || 'https://kitsu.io/api/edge',
+    // Kitsu moved from kitsu.io to kitsu.app; both hosts serve the same API.
+    baseUrl: process.env.KITSUU_BASE_URL || 'https://kitsu.app/api/edge',
     // JSON:API caps page[limit] at 20 on most routes.
     pageSize: Number(process.env.KITSUU_PAGE_SIZE || 20),
     mediaTypes: ['anime', 'manga'],

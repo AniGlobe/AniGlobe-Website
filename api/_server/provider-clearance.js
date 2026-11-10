@@ -30,7 +30,7 @@ const REVIEWED = '2026-11-10';
 export const PROVIDER_CLEARANCE = {
   kitsu: {
     label: 'Kitsu',
-    terms: 'https://developers.kitsu.io/ (Kitsu JSON:API documentation)',
+    terms: 'https://kitsu.docs.apiary.io/ (Kitsu JSON:API documentation)',
     capabilities: {
       'mirror-catalogue': {
         decision: 'conditional',
@@ -51,24 +51,24 @@ export const PROVIDER_CLEARANCE = {
         reviewedOn: REVIEWED,
       },
       'read-user-list': {
-        decision: 'conditional',
-        basis: 'Reading a user library needs OAuth2 with the library scope from a registered application.',
-        constraints: ['Register an application at Kitsu and keep the client secret server-side.'],
-        reviewedOn: REVIEWED,
-      },
-      'write-user-list': {
-        decision: 'conditional',
-        basis: 'Writing a user library uses the same registered application and the library scope.',
+        decision: 'deny',
+        basis: 'Kitsu\'s own OAuth documentation states that application registration is not implemented and that the authorization code grant is "not yet implemented". The only flow the API offers is the password grant, which would mean asking users for their Kitsu password.',
         constraints: [
-          'Register an application at Kitsu and keep the client secret server-side.',
-          'Write only the authenticated user\'s own entries, never another user\'s.',
+          'Do not ask a user for their Kitsu password.',
+          'Reconsider only if Kitsu ships application registration and the authorization code grant.',
         ],
         reviewedOn: REVIEWED,
       },
+      'write-user-list': {
+        decision: 'deny',
+        basis: 'Same reason as reading a user list: without application registration and the authorization code grant there is no delegated way to write a user library.',
+        constraints: ['Do not ask a user for their Kitsu password.'],
+        reviewedOn: REVIEWED,
+      },
       authenticate: {
-        decision: 'conditional',
-        basis: 'OAuth2 needs a registered application with a redirect URI we control.',
-        constraints: ['Register an application at Kitsu.'],
+        decision: 'deny',
+        basis: 'Sign-in only makes sense with the list capabilities above, which are denied.',
+        constraints: ['Only usable together with a cleared list capability.'],
         reviewedOn: REVIEWED,
       },
     },

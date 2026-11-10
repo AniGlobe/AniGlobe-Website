@@ -283,10 +283,16 @@ test('the clearance table denies AniList and refuses an unknown provider', () =>
   assert.equal(clearanceFor('anilist', 'mirror-catalogue').decision, 'deny');
   assert.equal(clearanceFor('anilist', 'write-user-list').decision, 'deny');
   assert.equal(clearanceFor('kitsu', 'mirror-catalogue').decision, 'conditional');
+  // Kitsu has no application registration and no authorization code grant,
+  // so a user library can only be reached through a password grant. We deny it.
+  assert.equal(clearanceFor('kitsu', 'read-user-list').decision, 'deny');
+  assert.equal(clearanceFor('kitsu', 'write-user-list').decision, 'deny');
   assert.equal(isCleared('kitsu', 'mirror-catalogue'), true);
+  assert.equal(isCleared('kitsu', 'write-user-list'), false);
   assert.equal(isCleared('anilist', 'mirror-catalogue'), false);
   assert.equal(isCleared('never-heard-of-it', 'mirror-catalogue'), false);
   assert.throws(() => requireClearance('anilist', 'mirror-catalogue'), /clearance table/i);
+  assert.throws(() => requireClearance('kitsu', 'write-user-list'), /clearance table/i);
   assert.throws(() => requireClearance('kitsu', 'not-a-capability'), /clearance table/i);
   assert.doesNotThrow(() => requireClearance('kitsu', 'mirror-catalogue'));
 });
