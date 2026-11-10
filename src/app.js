@@ -24,6 +24,7 @@ const dom = {
   sidebarBackdrop: document.getElementById('sidebar-backdrop'),
   sidebarToggle: document.getElementById('sidebar-toggle'),
   nav: document.getElementById('nav'),
+  sidebarFoot: document.querySelector('.sidebar-foot'),
   app: document.getElementById('app'),
   footer: document.getElementById('footer'),
 };
@@ -96,11 +97,30 @@ function renderTopbarAuth() {
       });
   } else {
     actions.push(
-      el('a', { class: 'btn btn-outline btn-sm', href: '#/login' }, 'Log In'),
-      el('a', { class: 'btn btn-primary btn-sm', href: '#/signup' }, 'Create Account')
+      el('a', { class: 'btn btn-outline btn-sm topbar-login', href: '#/login' }, 'Log In'),
+      el('a', { class: 'btn btn-primary btn-sm topbar-signup', href: '#/signup' }, 'Create Account')
     );
   }
   render(dom.topbarActions, ...actions);
+  renderSidebarAuth();
+}
+
+/** Guests get the signup path inside the sidebar, so the mobile header can
+ *  drop the second button without losing the route. */
+function renderSidebarAuth() {
+  const foot = dom.sidebarFoot;
+  if (!foot) return;
+  const existing = foot.querySelector('.sidebar-auth');
+  if (existing) existing.remove();
+  if (getSession()) return;
+  foot.append(
+    el(
+      'div',
+      { class: 'sidebar-auth' },
+      el('a', { class: 'btn btn-primary btn-sm', href: '#/signup' }, 'Create Account'),
+      el('a', { class: 'btn btn-quiet btn-sm', href: '#/login' }, 'Log In')
+    )
+  );
 }
 
 let cleanupCurrent = null;
