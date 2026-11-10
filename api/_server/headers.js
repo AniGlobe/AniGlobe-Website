@@ -12,8 +12,10 @@
 export const CSP = [
   "default-src 'self'",
   "script-src 'self' https://unpkg.com",
-  "style-src 'self' https://fonts.googleapis.com https://use.typekit.net",
-  "font-src 'self' https://fonts.gstatic.com https://use.typekit.net",
+  // p.typekit.net serves the kit's own stylesheet, which use.typekit.net
+  // imports; without it the Adobe font never loads.
+  "style-src 'self' https://fonts.googleapis.com https://use.typekit.net https://p.typekit.net",
+  "font-src 'self' https://fonts.gstatic.com https://use.typekit.net https://p.typekit.net",
   "img-src 'self' data: https://media.kitsu.app https://media.kitsu.io",
   "connect-src 'self' https://jikan.lucashdo.com https://graphql.anilist.co",
   "object-src 'none'",

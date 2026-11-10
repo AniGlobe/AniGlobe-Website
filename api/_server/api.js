@@ -29,11 +29,13 @@ import {
 import { hashPassword, verifyPassword, dummyVerify } from './passwords.js';
 import { resetPasswordMail, verifyEmailMail, sendMail, originOf } from './mail.js';
 import { catalogueProviderId, cronSecret } from './catalogue-config.js';
+import { clearanceSummary } from './provider-clearance.js';
 import {
   getLastSyncRun,
   getLibraryEntry,
   getMediaById,
   LIBRARY_STATUSES,
+  countLibraryEntries,
   deleteLibraryEntry,
   libraryStats,
   listLibraryEntries,
@@ -791,18 +793,30 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     const limit = Math.min(60, Math.max(1, Number(url.searchParams.get('limit')) || 24));
     const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
     const sort = String(url.searchParams.get('sort') || 'popularity');
+    const query = String(url.searchParams.get('q') || '').trim();
+    // Genres arrive as a comma-separated list: a title matches any of them.
+    const genres = String(url.searchParams.get('genres') || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 8);
     const genre = url.searchParams.get('genre');
     const year = url.searchParams.get('year');
     const format = url.searchParams.get('format');
     const season = url.searchParams.get('season');
     const status = url.searchParams.get('status');
+    const minScoreParam = url.searchParams.get('minScore');
+    const minScore = minScoreParam === null || minScoreParam === '' ? null : Number(minScoreParam);
     const page = await browseMedia(db, {
       mediaType,
+      query,
       genre: genre || null,
+      genres,
       format: format || null,
       year: year ? Number(year) : null,
       season: season || null,
       status: status || null,
+      minScore: Number.isFinite(minScore) ? minScore : null,
       sort,
       limit,
       offset,
@@ -831,8 +845,14 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
 
   async function libraryList(req, res) {
     const { user } = await requireSession(db, req);
-    const entries = await listLibraryEntries(db, user.id);
-    json(res, 200, { entries, stats: await libraryStats(db, user.id) });
+    const url = new URL(req.url, 'http://placeholder');
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || 50));
+    const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+    const status = normaliseStatusFilter(url.searchParams.get('status'));
+    const sort = String(url.searchParams.get('sort') || 'updated');
+    const entries = await listLibraryEntries(db, user.id, { limit, offset, status, sort });
+    const total = await countLibraryEntries(db, user.id, { status });
+    json(res, 200, { entries, total, limit, offset, stats: await libraryStats(db, user.id) });
   }
 
   async function libraryCreate(req, res) {
@@ -964,6 +984,9 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
             error: last.error || null,
           }
         : null,
+      // The clearance table travels with the status so an operator can see
+      // which provider capabilities are allowed (task T023).
+      clearance: clearanceSummary(),
     });
   }
 
@@ -973,6 +996,13 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       throw new HttpError(400, 'Status must be one of: ' + LIBRARY_STATUSES.join(', ') + '.');
     }
     return status;
+  }
+
+  /** The status filter on the list endpoint: empty means "every status". */
+  function normaliseStatusFilter(value) {
+    if (!value) return null;
+    const status = String(value).toUpperCase();
+    return LIBRARY_STATUSES.includes(status) ? status : null;
   }
 
   function normaliseProgress(value) {

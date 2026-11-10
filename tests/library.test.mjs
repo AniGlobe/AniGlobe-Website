@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { openDatabase, upsertMedia, tokeniseTitle, normaliseTitle } from '../api/_server/db.js';
 import { createApiRouter } from '../api/_server/api.js';
 import { searchSnapshot, shapeMedia } from '../api/_server/catalogue-store.js';
+import { clearanceFor, isCleared, requireClearance } from '../api/_server/provider-clearance.js';
 
 const GOOD_PASSWORD = 'Correct-Horse-42!';
 
@@ -82,6 +83,7 @@ function makeClient(base) {
 function seedMedia(db, overrides = {}) {
   const providerId = String(overrides.providerId || 'anime:1');
   const mediaType = providerId.includes(':') ? providerId.split(':')[0] : 'anime';
+  const genres = overrides.genres || ['Action', 'Space'];
   const media = {
     provider: 'kitsu',
     providerId,
@@ -98,16 +100,16 @@ function seedMedia(db, overrides = {}) {
     status: 'FINISHED',
     season: 'SPRING',
     seasonYear: overrides.year || 1998,
-    averageRating: 8.75,
+    averageRating: overrides.rating === undefined ? 8.75 : overrides.rating,
     popularity: 500000,
-    genres: JSON.stringify(['Action', 'Space']),
+    genres: JSON.stringify(genres),
     coverUrl: 'https://media.kitsu.io/cover.jpg',
     synopsis: 'A bounty hunter crew.',
     nsfw: false,
     updatedAt: null,
     expiresAt: null,
   };
-  return upsertMedia(db, media, tokeniseTitle(media.titleEn), ['Action', 'Space']);
+  return upsertMedia(db, media, tokeniseTitle(media.titleEn), genres);
 }
 
 test('catalogue snapshot stores media and finds it by token and prefix', async () => {
@@ -236,6 +238,75 @@ test('library requires a session and export returns the list', async () => {
   }
 });
 
+test('library list pages, filters by status, and sorts', async () => {
+  const server = await startTestServer();
+  try {
+    const { db, base, close } = server;
+    const first = await seedMedia(db, { providerId: 'anime:1', titleEn: 'Cowboy Bebop', year: 1998 });
+    const second = await seedMedia(db, { providerId: 'anime:2', titleEn: 'Naruto', year: 2002, episodes: 220 });
+    const third = await seedMedia(db, { providerId: 'anime:3', titleEn: 'Trigun', year: 1998 });
+    const client = makeClient(base);
+    await client.post('/api/auth/register', {
+      username: 'Pager',
+      email: 'pager@example.com',
+      password: GOOD_PASSWORD,
+    });
+    await client.post('/api/library', { mediaId: first, status: 'CURRENT', progress: 3 });
+    await client.post('/api/library', { mediaId: second, status: 'COMPLETED', progress: 220, score: 8 });
+    await client.post('/api/library', { mediaId: third, status: 'COMPLETED', progress: 26, score: 9 });
+
+    const page = await client.get('/api/library?limit=2&offset=0');
+    assert.equal(page.status, 200);
+    assert.equal(page.json.entries.length, 2);
+    assert.equal(page.json.total, 3);
+
+    const next = await client.get('/api/library?limit=2&offset=2');
+    assert.equal(next.json.entries.length, 1);
+    assert.equal(next.json.total, 3);
+
+    const filtered = await client.get('/api/library?status=COMPLETED');
+    assert.equal(filtered.json.entries.length, 2);
+    assert.equal(filtered.json.total, 2);
+    assert.ok(filtered.json.entries.every((entry) => entry.status === 'COMPLETED'));
+
+    const byTitle = await client.get('/api/library?sort=title');
+    assert.deepEqual(byTitle.json.entries.map((entry) => entry.title), ['Cowboy Bebop', 'Naruto', 'Trigun']);
+
+    const byScore = await client.get('/api/library?sort=score');
+    assert.deepEqual(byScore.json.entries.map((entry) => entry.score), [9, 8, null]);
+  } finally {
+    await server.close();
+  }
+});
+
+test('the clearance table denies AniList and refuses an unknown provider', () => {
+  assert.equal(clearanceFor('anilist', 'mirror-catalogue').decision, 'deny');
+  assert.equal(clearanceFor('anilist', 'write-user-list').decision, 'deny');
+  assert.equal(clearanceFor('kitsu', 'mirror-catalogue').decision, 'conditional');
+  assert.equal(isCleared('kitsu', 'mirror-catalogue'), true);
+  assert.equal(isCleared('anilist', 'mirror-catalogue'), false);
+  assert.equal(isCleared('never-heard-of-it', 'mirror-catalogue'), false);
+  assert.throws(() => requireClearance('anilist', 'mirror-catalogue'), /clearance table/i);
+  assert.throws(() => requireClearance('kitsu', 'not-a-capability'), /clearance table/i);
+  assert.doesNotThrow(() => requireClearance('kitsu', 'mirror-catalogue'));
+});
+
+test('catalogue status reports the provider clearance table', async () => {
+  const server = await startTestServer();
+  try {
+    const { base, close } = server;
+    const client = makeClient(base);
+    const status = await client.get('/api/catalogue/status');
+    assert.equal(status.status, 200);
+    assert.equal(status.json.provider, 'kitsu');
+    const anilist = status.json.clearance.find((row) => row.provider === 'anilist');
+    assert.equal(anilist.capabilities['mirror-catalogue'], 'deny');
+    assert.ok(anilist.terms.includes('terms-of-use'));
+  } finally {
+    await server.close();
+  }
+});
+
 test('catalogue sync trigger requires the cron secret', async () => {
   const server = await startTestServer();
   try {
@@ -296,6 +367,37 @@ test('browse endpoint filters, sorts, and paginates the snapshot', async () => {
     const paged = await client.get('/api/media/browse?type=anime&limit=1&offset=0');
     assert.equal(paged.json.items.length, 1);
     assert.equal(paged.json.total, 2);
+  } finally {
+    await server.close();
+  }
+});
+
+test('browse endpoint filters by keyword, several genres, and minimum score', async () => {
+  const server = await startTestServer();
+  try {
+    const { db, base, close } = server;
+    await seedMedia(db, { providerId: 'anime:1', titleEn: 'Cowboy Bebop', rating: 8.5, genres: ['Action', 'Space'] });
+    await seedMedia(db, { providerId: 'anime:2', titleEn: 'Naruto', rating: 7.2, genres: ['Action', 'Fantasy'] });
+    await seedMedia(db, { providerId: 'anime:3', titleEn: 'Trigun', rating: 9.1, genres: ['Action', 'Drama'] });
+    const client = makeClient(base);
+
+    const byKeyword = await client.get('/api/media/browse?type=anime&q=cowboy');
+    assert.equal(byKeyword.json.total, 1);
+    assert.equal(byKeyword.json.items[0].title, 'Cowboy Bebop');
+
+    const byTwoWords = await client.get('/api/media/browse?type=anime&q=cowboy+bebop');
+    assert.equal(byTwoWords.json.total, 1);
+
+    const byMissingWord = await client.get('/api/media/browse?type=anime&q=cowboy+naruto');
+    assert.equal(byMissingWord.json.total, 0);
+
+    const byGenres = await client.get('/api/media/browse?type=anime&genres=Drama,Fantasy');
+    assert.equal(byGenres.json.total, 2);
+    assert.deepEqual(byGenres.json.items.map((item) => item.title).sort(), ['Naruto', 'Trigun']);
+
+    const byScore = await client.get('/api/media/browse?type=anime&minScore=8');
+    assert.equal(byScore.json.total, 2);
+    assert.ok(byScore.json.items.every((item) => item.averageRating >= 8));
   } finally {
     await server.close();
   }

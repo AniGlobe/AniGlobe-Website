@@ -11,6 +11,8 @@
  */
 
 import { catalogueProvider, ratePerMinute } from './catalogue-config.js';
+import { normaliseFormat, normaliseStatus } from './media-vocab.js';
+import { requireClearance } from './provider-clearance.js';
 
 export class CatalogueError extends Error {
   constructor(message, code = 'unknown') {
@@ -138,12 +140,12 @@ export function normaliseMedia(resource, included, providerId, mediaType) {
     titleEn: titles.en,
     titleRomaji: titles.romaji,
     titleNative: titles.native,
-    format: attributes.subtype || attributes.showType || null,
+    format: normaliseFormat(attributes.subtype || attributes.showType, type),
     subtype: attributes.subtype || null,
     episodes: isManga ? null : (attributes.episodeCount || null),
     chapters: isManga ? (attributes.chapterCount || null) : null,
     volumes: isManga ? (attributes.volumeCount || null) : null,
-    status: attributes.status || null,
+    status: normaliseStatus(attributes.status),
     season: attributes.season || seasonFromStartDate(attributes.startDate),
     seasonYear: attributes.startDate ? Number(String(attributes.startDate).slice(0, 4)) || null : null,
     averageRating: ratingOutOfTen(attributes.averageRating),
@@ -160,6 +162,9 @@ export function normaliseMedia(resource, included, providerId, mediaType) {
 
 export function createCatalogueClient({ providerId } = {}) {
   const provider = catalogueProvider(providerId);
+  // The clearance table decides whether this provider may be mirrored at
+  // all. A denied provider throws before a single request goes out.
+  requireClearance(provider.id, 'mirror-catalogue');
   const throttle = createThrottle(ratePerMinute());
 
   async function fetchPage(path, params) {

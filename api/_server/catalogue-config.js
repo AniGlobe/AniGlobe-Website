@@ -6,7 +6,12 @@
  * (see artifacts/output/03-strategy/product-spec.md §8). AniList is not used
  * for the tracker: its Terms of Use forbid mass collection, using the API as
  * a data store, and tracker-shaped use.
+ *
+ * Only providers cleared for "mirror-catalogue" in provider-clearance.js are
+ * listed here. MyAnimeList and Jikan are not: the table records why.
  */
+
+import { isCleared } from './provider-clearance.js';
 
 export const CATALOGUE_PROVIDERS = {
   kitsu: {
@@ -17,13 +22,6 @@ export const CATALOGUE_PROVIDERS = {
     pageSize: Number(process.env.KITSUU_PAGE_SIZE || 20),
     mediaTypes: ['anime', 'manga'],
   },
-  malexic: {
-    id: 'malexic',
-    label: 'Jikan (MyAnimeList)',
-    baseUrl: process.env.JIKAN_BASE_URL || 'https://jikan.moe/v4',
-    pageSize: Number(process.env.JIKAN_PAGE_SIZE || 25),
-    mediaTypes: ['anime', 'manga'],
-  },
 };
 
 export function catalogueProvider(id) {
@@ -31,6 +29,9 @@ export function catalogueProvider(id) {
   const provider = CATALOGUE_PROVIDERS[key];
   if (!provider) {
     throw new Error('Unknown catalogue provider: ' + key);
+  }
+  if (!isCleared(provider.id, 'mirror-catalogue')) {
+    throw new Error('The clearance table does not allow ' + provider.label + ' to be mirrored.');
   }
   return provider;
 }

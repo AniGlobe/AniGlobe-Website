@@ -10,6 +10,9 @@ const GUEST_KEY = 'library:entries';
 
 export const LIBRARY_STATUSES = ['CURRENT', 'PLANNING', 'COMPLETED', 'DROPPED', 'PAUSED', 'REPEATING'];
 
+/** How many entries the list asks for at a time. */
+export const LIBRARY_PAGE_SIZE = 50;
+
 export const STATUS_LABELS = {
   CURRENT: 'Watching',
   PLANNING: 'Planning',
@@ -110,23 +113,47 @@ function guestStats(entries) {
   };
 }
 
-export async function listLibrary() {
+/**
+ * The list view the server applies for signed-in users: filter by status,
+ * then sort. Guests get the same treatment in the browser, so both modes
+ * show the same order.
+ */
+export function viewLibrary(entries, { status = '', sort = 'updated' } = {}) {
+  const filtered = status ? entries.filter((entry) => entry.status === status) : entries.slice();
+  const sorted = filtered.slice();
+  if (sort === 'title') sorted.sort((a, b) => String(a.title).localeCompare(String(b.title)));
+  else if (sort === 'status') sorted.sort((a, b) => String(a.status).localeCompare(String(b.status)));
+  else if (sort === 'score') sorted.sort((a, b) => (b.score || 0) - (a.score || 0));
+  else if (sort === 'year') sorted.sort((a, b) => (b.year || 0) - (a.year || 0));
+  else sorted.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  return sorted;
+}
+
+export async function listLibrary({ limit = LIBRARY_PAGE_SIZE, offset = 0, status = '', sort = 'updated' } = {}) {
   if (!getSession()) {
     const entries = guestEntries();
     // Self-heal storage if older saves held duplicates.
     const stored = store.get(GUEST_KEY, []);
     if (Array.isArray(stored) && stored.length !== entries.length) saveGuestEntries(entries);
-    return { entries, stats: guestStats(entries), guest: true };
+    const view = viewLibrary(entries, { status, sort });
+    const page = limit == null ? view : view.slice(offset, offset + limit);
+    return { entries: page, stats: guestStats(entries), guest: true, total: view.length, limit, offset };
   }
-  const payload = await request('/api/library');
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset), sort });
+  if (status) query.set('status', status);
+  const payload = await request('/api/library?' + query.toString());
+  const entries = (payload && payload.entries) || [];
   return {
-    entries: (payload && payload.entries) || [],
+    entries,
     stats: (payload && payload.stats) || null,
     guest: false,
+    total: payload && payload.total != null ? payload.total : entries.length,
+    limit: payload && payload.limit != null ? payload.limit : limit,
+    offset: payload && payload.offset != null ? payload.offset : offset,
   };
 }
 
-export async function saveEntry(entry) {
+export async function saveEntry(entry, paging = {}) {
   if (!getSession()) {
     const entries = guestEntries();
     // A catalogue result carries `id`; a stored entry carries `mediaId`.
@@ -162,7 +189,7 @@ export async function saveEntry(entry) {
     if (existing) Object.assign(existing, record);
     else entries.unshift(record);
     saveGuestEntries(entries);
-    return { entries, stats: guestStats(entries) };
+    return listLibrary(paging);
   }
   const body = {
     mediaId: entry.mediaId,
@@ -177,19 +204,19 @@ export async function saveEntry(entry) {
   } else {
     await request('/api/library', { method: 'POST', body });
   }
-  return listLibrary();
+  return listLibrary(paging);
 }
 
-export async function removeEntry(entry) {
+export async function removeEntry(entry, paging = {}) {
   const id = entry && typeof entry === 'object' ? entry.id : entry;
   const mediaId = entry && typeof entry === 'object' ? entry.mediaId : entry;
   if (!getSession()) {
     const entries = guestEntries().filter((item) => item.mediaId !== mediaId);
     saveGuestEntries(entries);
-    return { entries, stats: guestStats(entries) };
+    return listLibrary(paging);
   }
   await request('/api/library/' + encodeURIComponent(id), { method: 'DELETE' });
-  return listLibrary();
+  return listLibrary(paging);
 }
 
 export async function exportLibrary(format = 'json') {

@@ -289,6 +289,7 @@ const MIGRATIONS = [
     statements.push('CREATE INDEX IF NOT EXISTS media_popularity_idx ON media (media_type, popularity)');
     statements.push('CREATE INDEX IF NOT EXISTS media_rating_idx ON media (media_type, average_rating)');
     statements.push('CREATE INDEX IF NOT EXISTS media_format_idx ON media (media_type, format)');
+    statements.push('CREATE INDEX IF NOT EXISTS media_status_idx ON media (media_type, media_status)');
     statements.push('CREATE INDEX IF NOT EXISTS media_season_idx ON media (media_type, season, season_year)');
     return statements;
   },
@@ -871,14 +872,31 @@ export async function upsertLibraryEntry(db, userId, entry) {
   });
 }
 
-export async function listLibraryEntries(db, userId) {
+export async function listLibraryEntries(db, userId, { limit = null, offset = 0, status = null, sort = 'updated' } = {}) {
+  const where = ['e.user_id = ?'];
+  const args = [userId];
+  if (status) {
+    where.push('e.status = ?');
+    args.push(status);
+  }
+  // SQLite sorts NULLs last on a DESC order, which is what the score and
+  // year sorts want (unrated titles at the bottom).
+  const order = {
+    updated: 'e.updated_at DESC',
+    title: "LOWER(COALESCE(m.title_en, m.title_romaji, m.title_native, '')) ASC",
+    status: 'e.status ASC',
+    score: 'e.score DESC',
+    year: 'm.season_year DESC',
+  }[sort] || 'e.updated_at DESC';
+  const paging = limit == null ? '' : ' LIMIT ? OFFSET ?';
+  if (limit != null) args.push(Number(limit), Number(offset));
   const rows = await getRows(db, `
     SELECT e.*, m.title_en, m.title_romaji, m.title_native, m.cover_url, m.format,
            m.episodes, m.chapters, m.volumes, m.season_year, m.average_rating, m.genres
     FROM library_entries e JOIN media m ON m.id = e.media_id
-    WHERE e.user_id = ?
-    ORDER BY e.updated_at DESC
-  `, [userId]);
+    WHERE ${where.join(' AND ')}
+    ORDER BY ${order}${paging}
+  `, args);
   return rows.map((row) => ({
     id: row.id,
     mediaId: row.media_id,
@@ -903,6 +921,17 @@ export async function listLibraryEntries(db, userId) {
     source: row.source,
     updatedAt: row.updated_at,
   }));
+}
+
+export async function countLibraryEntries(db, userId, { status = null } = {}) {
+  const where = ['user_id = ?'];
+  const args = [userId];
+  if (status) {
+    where.push('status = ?');
+    args.push(status);
+  }
+  const row = await getRow(db, `SELECT COUNT(*) AS n FROM library_entries WHERE ${where.join(' AND ')}`, args);
+  return Number(row && row.n ? row.n : 0);
 }
 
 export async function getLibraryEntry(db, userId, id) {

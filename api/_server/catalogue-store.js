@@ -111,16 +111,19 @@ async function writeMedia(db, media, ttlMs) {
 /**
  * Browse the snapshot with filters, sorting, and pagination.
  * Every filter is served by an index (media_type, season_year, popularity,
- * average_rating, format, season, genre token table) so a browse never
- * scans the whole catalogue.
+ * average_rating, format, season, genre token table, title tokens) so a
+ * browse never scans the whole catalogue.
  */
 export async function browseMedia(db, {
   mediaType = null,
+  query = '',
   genre = null,
+  genres = [],
   format = null,
   year = null,
   season = null,
   status = null,
+  minScore = null,
   sort = 'popularity',
   limit = 24,
   offset = 0,
@@ -148,32 +151,52 @@ export async function browseMedia(db, {
     where.push('m.media_status = ?');
     args.push(status);
   }
+  if (minScore != null) {
+    where.push('m.average_rating >= ?');
+    args.push(Number(minScore));
+  }
 
-  let join = '';
-  if (genre) {
-    join = 'JOIN media_genre_tokens g ON g.media_id = m.id AND g.genre = ?';
-    args.unshift(genre);
+  // Title words go through the inverted token index: every word has to be
+  // present, so "cowboy bebop" finds the title and not every "cowboy".
+  const tokens = tokeniseTitle(query);
+  if (tokens.length) {
+    where.push(`m.id IN (
+      SELECT media_id FROM media_search_tokens
+      WHERE token IN (${tokens.map(() => '?').join(', ')})
+      GROUP BY media_id
+      HAVING COUNT(DISTINCT token) = ?
+    )`);
+    args.push(...tokens, tokens.length);
+  }
+
+  // Several genres match any of them; the EXISTS keeps one row per title.
+  const genreList = Array.isArray(genres) ? genres.filter(Boolean) : (genre ? [genre] : []);
+  if (genreList.length) {
+    where.push(`EXISTS (
+      SELECT 1 FROM media_genre_tokens g
+      WHERE g.media_id = m.id AND g.genre IN (${genreList.map(() => '?').join(', ')})
+    )`);
+    args.push(...genreList);
   }
 
   const order = {
-    popularity: 'm.popularity DESC NULLS LAST',
-    rating: 'm.average_rating DESC NULLS LAST',
-    year: 'm.season_year DESC NULLS LAST',
+    popularity: 'm.popularity DESC',
+    rating: 'm.average_rating DESC',
+    year: 'm.season_year DESC',
     title: 'm.title_norm ASC',
     newest: 'm.id DESC',
-  }[sort] || 'm.popularity DESC NULLS LAST';
+  }[sort] || 'm.popularity DESC';
 
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-  const safeOrder = order.replace(/NULLS LAST/g, '');
 
   const countRow = await db.execute(
-    `SELECT COUNT(*) AS n FROM media m ${join} ${clause}`,
+    `SELECT COUNT(*) AS n FROM media m ${clause}`,
     args
   );
   const total = Number(countRow.rows[0] ? countRow.rows[0].n : 0);
 
   const rows = await db.execute(
-    `SELECT m.* FROM media m ${join} ${clause} ORDER BY ${safeOrder} LIMIT ? OFFSET ?`,
+    `SELECT m.* FROM media m ${clause} ORDER BY ${order} LIMIT ? OFFSET ?`,
     [...args, limit, offset]
   );
 
@@ -203,11 +226,16 @@ export async function browseFacets(db, mediaType = null) {
     `SELECT season AS value, COUNT(*) AS n FROM media ${typeClause ? typeClause + ' AND' : 'WHERE'} season IS NOT NULL GROUP BY season ORDER BY n DESC`,
     typeArgs
   );
+  const statuses = await db.execute(
+    `SELECT media_status AS value, COUNT(*) AS n FROM media ${typeClause ? typeClause + ' AND' : 'WHERE'} media_status IS NOT NULL GROUP BY media_status ORDER BY n DESC`,
+    typeArgs
+  );
   return {
     formats: formats.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
     years: years.rows.map((row) => ({ value: Number(row.value), count: Number(row.n) })),
     genres: genres.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
     seasons: seasons.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
+    statuses: statuses.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
   };
 }
 

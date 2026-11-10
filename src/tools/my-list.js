@@ -5,6 +5,7 @@
 
 import { el, render, setStatus } from '../lib.js';
 import {
+  LIBRARY_PAGE_SIZE,
   LIBRARY_STATUSES,
   STATUS_LABELS,
   exportLibrary,
@@ -17,12 +18,6 @@ import { openEntryEditor } from './entry-editor.js';
 import { getSession } from '../auth.js';
 
 const SEARCH_DEBOUNCE_MS = 280;
-
-const STATE = {
-  status: '',
-  query: '',
-  sort: 'updated',
-};
 
 function statusOptions() {
   return LIBRARY_STATUSES.map((status) => el('option', { value: status }, STATUS_LABELS[status] || status));
@@ -44,7 +39,8 @@ export default {
   blurb: 'Track what you watch and read.',
 
   async mount(root) {
-    let state = { entries: [], stats: null, guest: !getSession() };
+    let state = { entries: [], stats: null, guest: !getSession(), total: 0, loaded: LIBRARY_PAGE_SIZE };
+    let view = { status: '', sort: 'updated' };
     let results = [];
     let searching = false;
     let destroyed = false;
@@ -74,15 +70,42 @@ export default {
     const statsWrap = el('div', { class: 'my-list-stats' });
     const libraryEmpty = el('p', { class: 'account-danger-note' }, 'Nothing tracked yet. Search for a title above and add it to your list.');
     const exportButton = el('button', { class: 'btn btn-outline btn-sm', type: 'button' }, 'Export my list');
+    const moreButton = el('button', { class: 'btn btn-outline btn-sm', type: 'button' }, 'Load more');
+    const moreWrap = el('div', { class: 'my-list-more', hidden: true }, moreButton);
 
     function sortedEntries() {
-      const entries = state.entries.slice();
-      if (STATE.sort === 'title') entries.sort((a, b) => String(a.title).localeCompare(String(b.title)));
-      else if (STATE.sort === 'status') entries.sort((a, b) => String(a.status).localeCompare(String(b.status)));
-      else if (STATE.sort === 'score') entries.sort((a, b) => (b.score || 0) - (a.score || 0));
-      else if (STATE.sort === 'year') entries.sort((a, b) => (b.year || 0) - (a.year || 0));
-      else entries.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-      return entries;
+      // The server sorts and filters; guests get the same view in the browser.
+      return state.entries;
+    }
+
+    async function refresh() {
+      const payload = await listLibrary({ limit: state.loaded, offset: 0, status: view.status, sort: view.sort });
+      if (destroyed) return;
+      state.entries = payload.entries;
+      state.stats = payload.stats;
+      state.total = payload.total;
+      renderLibrary();
+      renderStats();
+    }
+
+    async function loadMore() {
+      moreButton.disabled = true;
+      try {
+        const payload = await listLibrary({
+          limit: LIBRARY_PAGE_SIZE,
+          offset: state.entries.length,
+          status: view.status,
+          sort: view.sort,
+        });
+        if (destroyed) return;
+        state.entries = state.entries.concat(payload.entries);
+        state.total = payload.total;
+        renderLibrary();
+      } catch (error) {
+        setStatus(status, error.message || 'Could not load more of your list.', 'error');
+      } finally {
+        moreButton.disabled = false;
+      }
     }
 
     function renderStats() {
@@ -121,8 +144,9 @@ export default {
     }
 
     function renderLibrary() {
-      const entries = sortedEntries().filter((entry) => !STATE.status || entry.status === STATE.status);
+      const entries = sortedEntries();
       libraryEmpty.hidden = entries.length > 0;
+      moreWrap.hidden = state.entries.length >= state.total;
       render(
         libraryList,
         ...entries.map((entry) => {
@@ -144,11 +168,8 @@ export default {
           );
           open.addEventListener('click', () => {
             const editor = openEntryEditor(entry, {
-              onSaved: (next) => {
-                state.entries = next.entries;
-                state.stats = next.stats;
-                renderLibrary();
-                renderStats();
+              onSaved: () => {
+                refresh();
               },
               onStatus: (message) => setStatus(status, message, 'info'),
             });
@@ -158,11 +179,8 @@ export default {
           remove.addEventListener('click', async () => {
             remove.disabled = true;
             try {
-              const next = await removeEntry({ id: entry.id, mediaId: entry.mediaId });
-              state.entries = next.entries;
-              state.stats = next.stats;
-              renderLibrary();
-              renderStats();
+              await removeEntry({ id: entry.id, mediaId: entry.mediaId });
+              await refresh();
               setStatus(status, 'Removed from your list.', 'info');
             } catch (error) {
               setStatus(status, error.message || 'Could not remove that title.', 'error');
@@ -187,11 +205,8 @@ export default {
           add.addEventListener('click', async () => {
             add.disabled = true;
             try {
-              const next = await saveEntry({ media, status: 'PLANNING', progress: 0 });
-              state.entries = next.entries;
-              state.stats = next.stats;
-              renderLibrary();
-              renderStats();
+              await saveEntry({ media, status: 'PLANNING', progress: 0 });
+              await refresh();
               setStatus(status, 'Added "' + media.title + '" to your list.', 'info');
             } catch (error) {
               setStatus(status, error.message || 'Could not add that title.', 'error');
@@ -255,14 +270,17 @@ export default {
       searchTimer = setTimeout(runSearch, SEARCH_DEBOUNCE_MS);
     });
 
-    filterSelect.addEventListener('change', () => {
-      STATE.status = filterSelect.value;
-      renderLibrary();
+    filterSelect.addEventListener('change', async () => {
+      view.status = filterSelect.value;
+      state.loaded = LIBRARY_PAGE_SIZE;
+      await refresh();
     });
-    sortSelect.addEventListener('change', () => {
-      STATE.sort = sortSelect.value;
-      renderLibrary();
+    sortSelect.addEventListener('change', async () => {
+      view.sort = sortSelect.value;
+      state.loaded = LIBRARY_PAGE_SIZE;
+      await refresh();
     });
+    moreButton.addEventListener('click', loadMore);
     exportButton.addEventListener('click', async () => {
       exportButton.disabled = true;
       try {
@@ -305,21 +323,17 @@ export default {
         ),
         statsWrap,
         libraryList,
-        libraryEmpty
+        libraryEmpty,
+        moreWrap
       ),
       status
     );
 
     try {
-      const payload = await listLibrary();
-      if (destroyed) return;
-      state.entries = payload.entries;
-      state.stats = payload.stats;
+      await refresh();
     } catch (error) {
       setStatus(status, error.message || 'Could not load your list.', 'error');
     }
-    renderLibrary();
-    renderStats();
 
     return () => {
       destroyed = true;
