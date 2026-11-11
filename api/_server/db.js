@@ -321,6 +321,16 @@ const MIGRATIONS = [
     ];
   },
   async (db, columns) => {
+    // The token tables are indexed by their text column, so clearing a
+    // title's tokens by media_id had to scan the whole table. These indexes
+    // make the delete a lookup, which is what the crawl spends its time on.
+    const statements = [
+      'CREATE INDEX IF NOT EXISTS media_search_tokens_media_id_idx ON media_search_tokens (media_id)',
+      'CREATE INDEX IF NOT EXISTS media_genre_tokens_media_id_idx ON media_genre_tokens (media_id)',
+    ];
+    return statements;
+  },
+  async (db, columns) => {
     // The catalogue is disposable: it can be wiped and crawled again. So a
     // list entry keeps its own copy of the title, and the list still reads
     // properly while the catalogue is being rebuilt.
@@ -438,6 +448,7 @@ const MIGRATION_TARGETS = [
   'catalogue', // media_type and the browse indexes
   'catalogue', // catalogue_cursors and the sync report columns
   'catalogue', // the cached facet counts
+  'catalogue', // the token lookups by media id
 ];
 
 function nowIso() {
