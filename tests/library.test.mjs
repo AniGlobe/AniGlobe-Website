@@ -346,6 +346,28 @@ test('an upserted title keeps its id and replaces its tokens', async () => {
   }
 });
 
+test('a new migration reaches a database that was created earlier', async () => {
+  // The trap this guards: adding a statement to a migration that a live
+  // database has already applied never runs there, because the migration
+  // list is walked by index. New schema has to be a new entry at the end.
+  const db = await openDatabase(':memory:');
+  await db.execute('DROP TABLE catalogue_cursors');
+  await db.execute('ALTER TABLE catalogue_sync_runs DROP COLUMN mode');
+  await db.execute('DELETE FROM schema_migrations WHERE id = (SELECT MAX(id) FROM schema_migrations)');
+  await db.close();
+
+  const reopened = await openDatabase(':memory:');
+  try {
+    const tables = await reopened.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'catalogue_cursors'");
+    assert.equal(tables.rows.length, 1, 'the cursor table is created again');
+    const columns = await reopened.execute('PRAGMA table_info(catalogue_sync_runs)');
+    assert.ok(columns.rows.some((row) => row.name === 'mode'), 'the sync report keeps its mode column');
+    assert.ok(columns.rows.some((row) => row.name === 'cursor'), 'the sync report keeps its cursor column');
+  } finally {
+    await reopened.close();
+  }
+});
+
 test('the sync trigger reads the secret from a header, a bearer token, or a query parameter', () => {
   const url = new URL('http://placeholder/api/catalogue/sync?secret=from-query');
   assert.equal(requestCronSecret({ headers: { 'x-cron-secret': 'from-header' } }, url), 'from-header');

@@ -275,16 +275,6 @@ const MIGRATIONS = [
         skipped INTEGER NOT NULL DEFAULT 0,
         error TEXT
       )`,
-      // Where the next sync run continues: the crawl walks the catalogue
-      // forward, the refresh walks it again to renew stale rows.
-      `CREATE TABLE IF NOT EXISTS catalogue_cursors (
-        provider TEXT NOT NULL,
-        media_type TEXT NOT NULL,
-        kind TEXT NOT NULL,
-        cursor INTEGER NOT NULL DEFAULT 0,
-        updated_at TEXT NOT NULL,
-        PRIMARY KEY (provider, media_type, kind)
-      )`,
     ];
   },
   async (db) => {
@@ -301,8 +291,21 @@ const MIGRATIONS = [
     statements.push('CREATE INDEX IF NOT EXISTS media_format_idx ON media (media_type, format)');
     statements.push('CREATE INDEX IF NOT EXISTS media_status_idx ON media (media_type, media_status)');
     statements.push('CREATE INDEX IF NOT EXISTS media_season_idx ON media (media_type, season, season_year)');
-    // The sync report keeps the crawl position, so the operator can see how
-    // far the catalogue has been filled.
+    return statements;
+  },
+  async (db) => {
+    // The crawl needs a cursor to resume from, and the sync report keeps the
+    // position so an operator can see how far the catalogue has been filled.
+    const statements = [
+      `CREATE TABLE IF NOT EXISTS catalogue_cursors (
+        provider TEXT NOT NULL,
+        media_type TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        cursor INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (provider, media_type, kind)
+      )`,
+    ];
     if (!(await hasColumn(db, 'catalogue_sync_runs', 'mode'))) {
       statements.push('ALTER TABLE catalogue_sync_runs ADD COLUMN mode TEXT');
     }
