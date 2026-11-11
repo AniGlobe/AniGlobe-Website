@@ -443,12 +443,12 @@ const MIGRATION_TARGETS = [
   'catalogue', // media, media_id_map, media_search_tokens, media_genre_tokens
   'user', // google oauth, oauth_states
   'user', // library_entries, library_sync_state
+  'catalogue', // the token lookups by media id
   'user', // the title copy each list entry keeps
   'catalogue', // catalogue_sync_runs
   'catalogue', // media_type and the browse indexes
   'catalogue', // catalogue_cursors and the sync report columns
   'catalogue', // the cached facet counts
-  'catalogue', // the token lookups by media id
 ];
 
 function nowIso() {

@@ -33,6 +33,7 @@ const { db, catalogueDb } = await openDatabase();
 for (const mediaType of mediaTypes) {
   process.stdout.write(`\n${mediaType}: filling\n`);
   let more = true;
+  let failures = 0;
   while (more) {
     const report = await runCatalogueSync(catalogueDb, { mediaType, limit, budgetSeconds });
     const done = report.cursor;
@@ -42,9 +43,17 @@ for (const mediaType of mediaTypes) {
         (report.error ? `, error: ${report.error}` : '') + '\n'
     );
     if (report.error) {
-      process.exitCode = 1;
-      break;
+      // A provider timeout should not end the crawl: the cursor keeps the
+      // place, so the next run continues.
+      failures += 1;
+      if (failures >= 3) {
+        process.exitCode = 1;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      continue;
     }
+    failures = 0;
     more = report.more === true;
   }
 }
