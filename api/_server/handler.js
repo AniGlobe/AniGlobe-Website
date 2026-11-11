@@ -52,6 +52,9 @@ export function createRequestHandler({ db, api }) {
           ok: dbOk,
           uptimeSeconds: Math.floor(process.uptime()),
           db: dbOk ? 'ok' : 'down',
+          // Which build is answering, so an operator can tell a stale
+          // deployment from a real failure. Vercel sets this per build.
+          commit: process.env.VERCEL_GIT_COMMIT_SHA || null,
         });
         return;
       }
