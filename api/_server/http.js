@@ -183,6 +183,11 @@ export function sendHttpError(res, error) {
     });
     return;
   }
+  // The client gets a plain message; the server log gets the reason, or an
+  // operator has nothing to look at when an endpoint starts failing.
+  const message = error && error.message ? String(error.message).slice(0, 200) : 'unknown error';
+  const stack = error && error.stack ? String(error.stack).split('\n').slice(0, 4).join(' | ').slice(0, 400) : '';
+  process.stderr.write(`[aniglobe-error] ${JSON.stringify({ ts: new Date().toISOString(), error: message, stack })}\n`);
   json(res, 500, { error: 'Something went wrong on our side. Try again in a moment.' });
 }
 
