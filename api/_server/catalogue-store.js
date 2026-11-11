@@ -277,6 +277,52 @@ export async function browseFacets(db, mediaType = null) {
 }
 
 /**
+ * The titles behind a user's list, fetched in one query.
+ *
+ * The entries live in the accounts database and the titles in the catalogue
+ * database, so a list page has to bring the two together here.
+ */
+export async function getMediaByIds(db, ids) {
+  const wanted = [...new Set((ids || []).map(Number).filter(Number.isInteger))];
+  if (!wanted.length) return new Map();
+  const rows = await db.execute(
+    `SELECT * FROM media WHERE id IN (${wanted.map(() => '?').join(', ')})`,
+    wanted
+  );
+  const byId = new Map();
+  for (const row of rows.rows) {
+    const media = shapeMedia(row);
+    byId.set(media.id, media);
+  }
+  return byId;
+}
+
+/**
+ * Sort list entries by a title detail.
+ *
+ * The title lives in the catalogue database and the entry in the accounts
+ * one, so a sort by title or year cannot be done in SQL. The whole list is
+ * sorted here and paged afterwards.
+ */
+export function sortEntriesByMedia(entries, titles, sort) {
+  const sorted = entries.slice();
+  if (sort === 'title') {
+    sorted.sort((a, b) => {
+      const left = titles.get(a.mediaId);
+      const right = titles.get(b.mediaId);
+      return String(left ? left.title : '').localeCompare(String(right ? right.title : ''));
+    });
+  } else if (sort === 'year') {
+    sorted.sort((a, b) => {
+      const left = titles.get(a.mediaId);
+      const right = titles.get(b.mediaId);
+      return (right && right.year ? right.year : 0) - (left && left.year ? left.year : 0);
+    });
+  }
+  return sorted;
+}
+
+/**
  * Search the snapshot. Token lookup first (indexed, cheap), then a prefix
  * match on the normalised title. A LIKE '%term%' scan is never used: it
  * would burn the hosted database's monthly row-read budget.

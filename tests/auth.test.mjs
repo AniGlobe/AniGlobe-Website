@@ -12,10 +12,11 @@ import { hashPassword, verifyPassword } from '../api/_server/passwords.js';
  * value, which is exactly the surface a malicious client would fuzz.
  */
 async function startTestServer({ mail = null, oauth = null } = {}) {
-  const db = await openDatabase(':memory:');
+  const { db, catalogueDb } = await openDatabase(':memory:');
   const outbox = [];
   const api = createApiRouter({
     db,
+    catalogueDb,
     registerLimiter: { consume: () => ({ allowed: true, retryAfterMs: 0 }) },
     loginLimiter: { consume: () => ({ allowed: true, retryAfterMs: 0 }) },
     resetLimiter: { consume: () => ({ allowed: true, retryAfterMs: 0 }) },

@@ -28,13 +28,13 @@ const limit = syncBatchSize();
 // There is no function wall clock here, so a run may be much longer.
 const budgetSeconds = Number(process.env.CATALOGUE_SYNC_BUDGET_SECONDS || 300);
 
-const db = await openDatabase();
+const { db, catalogueDb } = await openDatabase();
 
 for (const mediaType of mediaTypes) {
   process.stdout.write(`\n${mediaType}: filling\n`);
   let more = true;
   while (more) {
-    const report = await runCatalogueSync(db, { mediaType, limit, budgetSeconds });
+    const report = await runCatalogueSync(catalogueDb, { mediaType, limit, budgetSeconds });
     const done = report.cursor;
     const total = report.total || '?';
     process.stdout.write(
@@ -50,3 +50,4 @@ for (const mediaType of mediaTypes) {
 }
 
 await db.close();
+if (catalogueDb !== db) await catalogueDb.close();

@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import { mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { openDatabase, upsertMedia, tokeniseTitle, normaliseTitle, getCatalogueCursor, setCatalogueCursor, migrationState } from '../api/_server/db.js';
 import { createApiRouter } from '../api/_server/api.js';
 import { searchSnapshot, shapeMedia } from '../api/_server/catalogue-store.js';
@@ -10,10 +13,11 @@ import { clearanceFor, isCleared, requireClearance } from '../api/_server/provid
 const GOOD_PASSWORD = 'Correct-Horse-42!';
 
 async function startTestServer({ mail = null } = {}) {
-  const db = await openDatabase(':memory:');
+  const { db, catalogueDb } = await openDatabase(':memory:');
   const outbox = [];
   const api = createApiRouter({
     db,
+    catalogueDb,
     registerLimiter: { consume: async () => ({ allowed: true, retryAfterMs: 0 }) },
     loginLimiter: { consume: async () => ({ allowed: true, retryAfterMs: 0 }) },
     resetLimiter: { consume: async () => ({ allowed: true, retryAfterMs: 0 }) },
@@ -35,6 +39,7 @@ async function startTestServer({ mail = null } = {}) {
   const port = server.address().port;
   return {
     db,
+    catalogueDb,
     outbox,
     base: `http://127.0.0.1:${port}`,
     close: () => new Promise((resolve) => server.close(resolve)),
@@ -350,20 +355,20 @@ test('a new migration reaches a database that was created earlier', async () => 
   // The trap this guards: adding a statement to a migration that a live
   // database has already applied never runs there, because the migration
   // list is walked by index. New schema has to be a new entry at the end.
-  const db = await openDatabase(':memory:');
-  await db.execute('DROP TABLE catalogue_cursors');
-  await db.execute('ALTER TABLE catalogue_sync_runs DROP COLUMN mode');
+  const { db, catalogueDb } = await openDatabase(':memory:');
+  await catalogueDb.execute('DROP TABLE catalogue_cursors');
+  await catalogueDb.execute('ALTER TABLE catalogue_sync_runs DROP COLUMN mode');
   await db.close();
 
   const reopened = await openDatabase(':memory:');
   try {
-    const tables = await reopened.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'catalogue_cursors'");
+    const tables = await reopened.catalogueDb.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'catalogue_cursors'");
     assert.equal(tables.rows.length, 1, 'the cursor table is created again');
-    const columns = await reopened.execute('PRAGMA table_info(catalogue_sync_runs)');
+    const columns = await reopened.catalogueDb.execute('PRAGMA table_info(catalogue_sync_runs)');
     assert.ok(columns.rows.some((row) => row.name === 'mode'), 'the sync report keeps its mode column');
     assert.ok(columns.rows.some((row) => row.name === 'cursor'), 'the sync report keeps its cursor column');
   } finally {
-    await reopened.close();
+    await reopened.db.close();
   }
 });
 
@@ -371,21 +376,93 @@ test('the schema is applied even when the migration bookkeeping has drifted', as
   // Two cold starts applying the same migration leave two rows behind, and
   // a row count would then run ahead of the migration list and skip the
   // rest. Every migration is idempotent, so they all run instead.
-  const db = await openDatabase(':memory:');
-  await db.execute('DROP TABLE catalogue_cursors');
-  await db.execute("INSERT INTO schema_migrations (applied_at) VALUES ('2026-01-01T00:00:00.000Z')");
-  await db.execute("INSERT INTO schema_migrations (applied_at) VALUES ('2026-01-01T00:00:01.000Z')");
+  const { db, catalogueDb } = await openDatabase(':memory:');
+  await catalogueDb.execute('DROP TABLE catalogue_cursors');
+  await catalogueDb.execute("INSERT INTO schema_migrations (applied_at) VALUES ('2026-01-01T00:00:00.000Z')");
+  await catalogueDb.execute("INSERT INTO schema_migrations (applied_at) VALUES ('2026-01-01T00:00:01.000Z')");
   await db.close();
 
   const reopened = await openDatabase(':memory:');
   try {
-    const state = await migrationState(reopened);
+    const state = await migrationState(reopened.catalogueDb);
     assert.equal(state.hasCatalogueCursors, true, 'the missing table is created anyway');
     assert.equal(state.hasCatalogueSyncRuns, true);
     assert.equal(state.hasMedia, true);
-    assert.equal(state.hasLibraryEntries, true);
   } finally {
-    await reopened.close();
+    await reopened.db.close();
+  }
+});
+
+test('the accounts and the catalogue live in separate databases', async () => {
+  // Two databases, one for the people and one for the titles. The list
+  // joins the two in the API, not in the database.
+  const dir = join(tmpdir(), 'aniglobe-split-' + process.pid + '-' + Date.now());
+  mkdirSync(dir, { recursive: true });
+  const accountsUrl = 'file:' + join(dir, 'accounts.db');
+  const catalogueUrl = 'file:' + join(dir, 'catalogue.db');
+  const { db, catalogueDb } = await openDatabase(accountsUrl, catalogueUrl);
+  try {
+    const accounts = await migrationState(db);
+    const catalogue = await migrationState(catalogueDb);
+    assert.equal(accounts.hasMedia, false, 'the media table is not in the accounts database');
+    assert.equal(accounts.hasLibraryEntries, true);
+    assert.equal(catalogue.hasMedia, true, 'the media table is in the catalogue database');
+    assert.equal(catalogue.hasCatalogueCursors, true);
+    assert.equal(catalogue.hasCatalogueSyncRuns, true);
+
+    // A title in the catalogue database, a list entry in the accounts one.
+    const mediaId = await seedMedia(catalogueDb, { providerId: 'anime:1', titleEn: 'Cowboy Bebop' });
+    const outbox = [];
+    const api = createApiRouter({
+      db,
+      catalogueDb,
+      registerLimiter: { consume: async () => ({ allowed: true, retryAfterMs: 0 }) },
+      loginLimiter: { consume: async () => ({ allowed: true, retryAfterMs: 0 }) },
+      resetLimiter: { consume: async () => ({ allowed: true, retryAfterMs: 0 }) },
+      mailer: async (message) => { outbox.push(message); },
+    });
+    const server = createServer(async (req, res) => {
+      try {
+        await api.handle(req, res);
+      } catch (error) {
+        if (!res.headersSent) {
+          res.writeHead(error.status || 500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: error.message || 'Server error' }));
+        } else {
+          res.end();
+        }
+      }
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const client = makeClient(`http://127.0.0.1:${server.address().port}`);
+    try {
+      await client.post('/api/auth/register', {
+        username: 'Split',
+        email: 'split@example.com',
+        password: GOOD_PASSWORD,
+      });
+      const created = await client.post('/api/library', { mediaId, status: 'CURRENT', progress: 4 });
+      assert.equal(created.status, 201);
+
+      const list = await client.get('/api/library');
+      assert.equal(list.status, 200);
+      assert.equal(list.json.entries.length, 1);
+      // The title comes from the catalogue database, the entry from the
+      // accounts one.
+      assert.equal(list.json.entries[0].title, 'Cowboy Bebop');
+      assert.equal(list.json.entries[0].episodes, 26);
+      assert.equal(list.json.entries[0].status, 'CURRENT');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  } finally {
+    await db.close();
+    if (catalogueDb !== db) await catalogueDb.close();
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // Windows may still hold the file handle for a moment.
+    }
   }
 });
 

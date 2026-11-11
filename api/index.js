@@ -17,14 +17,15 @@ let handlerPromise = null;
 function handler() {
   if (!handlerPromise) {
     handlerPromise = (async () => {
-      const db = await openDatabase();
+      const { db, catalogueDb } = await openDatabase();
       const api = createApiRouter({
         db,
+        catalogueDb,
         registerLimiter: createDbRateLimiter({ db, windowMs: 15 * 60 * 1000, max: 20 }),
         loginLimiter: createDbRateLimiter({ db, windowMs: 15 * 60 * 1000, max: 30 }),
         resetLimiter: createDbRateLimiter({ db, windowMs: 60 * 60 * 1000, max: 5 }),
       });
-      return createRequestHandler({ db, api });
+      return createRequestHandler({ db, catalogueDb, api });
     })();
     handlerPromise.catch(() => {
       handlerPromise = null;

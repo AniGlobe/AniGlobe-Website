@@ -39,11 +39,43 @@ const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 // column checks before ALTER — because on serverless, several instances can
 // cold-start at the same time and race the same migrations. Idempotent DDL
 // makes the race harmless: both instances converge on the same schema.
-async function hasColumn(db, table, column) {
-  const rows = (await db.execute(`PRAGMA table_info(${table})`)).rows;
-  return rows.some((row) => row.name === column);
+
+/**
+ * The columns of every table the migrations guard, in one query.
+ *
+ * Asking per column cost one round trip each, and a cold start does that
+ * for every guard, which made opening the database the slowest part of a
+ * request.
+ */
+async function tableColumns(db) {
+  const tables = ['users', 'sessions', 'templates', 'media', 'catalogue_sync_runs'];
+  const sql = tables
+    .map((table) => `SELECT '${table}' AS tbl, name FROM pragma_table_info('${table}')`)
+    .join(' UNION ALL ');
+  const rows = (await db.execute(sql)).rows;
+  const columns = new Map();
+  for (const row of rows) {
+    if (!columns.has(row.tbl)) columns.set(row.tbl, new Set());
+    columns.get(row.tbl).add(row.name);
+  }
+  return columns;
 }
 
+/** Whether a table already has a column, from the map above. */
+function hasColumn(columns, table, column) {
+  const set = columns && columns.get(table);
+  return Boolean(set && set.has(column));
+}
+
+/**
+ * The schema is split over two databases.
+ *
+ * The accounts database holds the people: sign-ins, sessions, templates and
+ * their lists. The catalogue database holds the media snapshot, which is
+ * large, rebuilt often and disposable. Keeping them apart means the
+ * catalogue can be wiped or re-crawled without touching anybody's account,
+ * and the account data stays small enough to back up in one go.
+ */
 const MIGRATIONS = [
   async () => [
     `CREATE TABLE IF NOT EXISTS users (
@@ -103,13 +135,13 @@ const MIGRATIONS = [
       reset_at INTEGER NOT NULL
     )`,
   ],
-  async (db) => {
+  async (db, columns) => {
     const statements = [];
-    if (!(await hasColumn(db, 'sessions', 'last_seen_at'))) {
+    if (!(hasColumn(columns, 'sessions', 'last_seen_at'))) {
       statements.push('ALTER TABLE sessions ADD COLUMN last_seen_at TEXT');
     }
     statements.push('CREATE INDEX IF NOT EXISTS sessions_last_seen_idx ON sessions (last_seen_at)');
-    if (!(await hasColumn(db, 'users', 'email_verified_at'))) {
+    if (!(hasColumn(columns, 'users', 'email_verified_at'))) {
       statements.push('ALTER TABLE users ADD COLUMN email_verified_at TEXT');
     }
     statements.push(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -130,19 +162,19 @@ const MIGRATIONS = [
     )`);
     return statements;
   },
-  async (db) => {
+  async (db, columns) => {
     const statements = [];
-    if (!(await hasColumn(db, 'users', 'bio'))) {
+    if (!(hasColumn(columns, 'users', 'bio'))) {
       statements.push('ALTER TABLE users ADD COLUMN bio TEXT');
     }
-    if (!(await hasColumn(db, 'users', 'avatar_data'))) {
+    if (!(hasColumn(columns, 'users', 'avatar_data'))) {
       statements.push('ALTER TABLE users ADD COLUMN avatar_data TEXT');
     }
     return statements;
   },
-  async (db) => {
+  async (db, columns) => {
     const statements = [];
-    if (!(await hasColumn(db, 'templates', 'is_public'))) {
+    if (!(hasColumn(columns, 'templates', 'is_public'))) {
       statements.push('ALTER TABLE templates ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0');
     }
     statements.push('CREATE INDEX IF NOT EXISTS templates_public_idx ON templates (is_public, updated_at DESC)');
@@ -158,29 +190,6 @@ const MIGRATIONS = [
       )`,
       'CREATE INDEX IF NOT EXISTS template_likes_template_idx ON template_likes (template_id)',
     ];
-  },
-  async (db) => {
-    const statements = [];
-    if (!(await hasColumn(db, 'users', 'oauth_provider'))) {
-      statements.push('ALTER TABLE users ADD COLUMN oauth_provider TEXT');
-    }
-    if (!(await hasColumn(db, 'users', 'oauth_subject'))) {
-      statements.push('ALTER TABLE users ADD COLUMN oauth_subject TEXT');
-    }
-    statements.push('CREATE UNIQUE INDEX IF NOT EXISTS users_oauth_subject_unique ON users (oauth_provider, oauth_subject) WHERE oauth_provider IS NOT NULL AND oauth_subject IS NOT NULL');
-    statements.push(
-      `CREATE TABLE IF NOT EXISTS oauth_states (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        state_hash TEXT NOT NULL UNIQUE,
-        code_verifier TEXT NOT NULL,
-        user_id INTEGER REFERENCES users (id) ON DELETE CASCADE,
-        mode TEXT NOT NULL DEFAULT 'login',
-        created_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL,
-        used_at TEXT
-      )`
-    );
-    return statements;
   },
   async (db) => {
     // Catalogue snapshot (we own it; providers are only read on a miss).
@@ -235,10 +244,39 @@ const MIGRATIONS = [
         PRIMARY KEY (genre, media_id)
       )`,
       'CREATE INDEX IF NOT EXISTS media_genre_tokens_genre_idx ON media_genre_tokens (genre)',
+    ];
+  },
+  async (db, columns) => {
+    const statements = [];
+    if (!(hasColumn(columns, 'users', 'oauth_provider'))) {
+      statements.push('ALTER TABLE users ADD COLUMN oauth_provider TEXT');
+    }
+    if (!(hasColumn(columns, 'users', 'oauth_subject'))) {
+      statements.push('ALTER TABLE users ADD COLUMN oauth_subject TEXT');
+    }
+    statements.push('CREATE UNIQUE INDEX IF NOT EXISTS users_oauth_subject_unique ON users (oauth_provider, oauth_subject) WHERE oauth_provider IS NOT NULL AND oauth_subject IS NOT NULL');
+    statements.push(
+      `CREATE TABLE IF NOT EXISTS oauth_states (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        state_hash TEXT NOT NULL UNIQUE,
+        code_verifier TEXT NOT NULL,
+        user_id INTEGER REFERENCES users (id) ON DELETE CASCADE,
+        mode TEXT NOT NULL DEFAULT 'login',
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT
+      )`
+    );
+    return statements;
+  },
+  async (db) => {
+    // The user's own list. It lives with the accounts, not with the
+    // catalogue: media_id points at a row in the catalogue database.
+    return [
       `CREATE TABLE IF NOT EXISTS library_entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-        media_id INTEGER NOT NULL REFERENCES media (id) ON DELETE CASCADE,
+        media_id INTEGER NOT NULL,
         status TEXT NOT NULL DEFAULT 'PLANNING',
         progress INTEGER NOT NULL DEFAULT 0,
         score REAL,
@@ -265,6 +303,10 @@ const MIGRATIONS = [
         conflicted INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (user_id, provider)
       )`,
+    ];
+  },
+  async (db) => {
+    return [
       `CREATE TABLE IF NOT EXISTS catalogue_sync_runs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         provider TEXT NOT NULL,
@@ -277,11 +319,11 @@ const MIGRATIONS = [
       )`,
     ];
   },
-  async (db) => {
+  async (db, columns) => {
     // Browsing needs a media type and indexed filter columns, otherwise a
     // "browse by year/genre" query scans the whole snapshot.
     const statements = [];
-    if (!(await hasColumn(db, 'media', 'media_type'))) {
+    if (!(hasColumn(columns, 'media', 'media_type'))) {
       statements.push('ALTER TABLE media ADD COLUMN media_type TEXT');
     }
     statements.push('CREATE INDEX IF NOT EXISTS media_type_idx ON media (media_type)');
@@ -293,7 +335,7 @@ const MIGRATIONS = [
     statements.push('CREATE INDEX IF NOT EXISTS media_season_idx ON media (media_type, season, season_year)');
     return statements;
   },
-  async (db) => {
+  async (db, columns) => {
     // The crawl needs a cursor to resume from, and the sync report keeps the
     // position so an operator can see how far the catalogue has been filled.
     const statements = [
@@ -306,20 +348,42 @@ const MIGRATIONS = [
         PRIMARY KEY (provider, media_type, kind)
       )`,
     ];
-    if (!(await hasColumn(db, 'catalogue_sync_runs', 'mode'))) {
+    if (!(hasColumn(columns, 'catalogue_sync_runs', 'mode'))) {
       statements.push('ALTER TABLE catalogue_sync_runs ADD COLUMN mode TEXT');
     }
-    if (!(await hasColumn(db, 'catalogue_sync_runs', 'cursor'))) {
+    if (!(hasColumn(columns, 'catalogue_sync_runs', 'cursor'))) {
       statements.push('ALTER TABLE catalogue_sync_runs ADD COLUMN cursor INTEGER NOT NULL DEFAULT 0');
     }
-    if (!(await hasColumn(db, 'catalogue_sync_runs', 'total'))) {
+    if (!(hasColumn(columns, 'catalogue_sync_runs', 'total'))) {
       statements.push('ALTER TABLE catalogue_sync_runs ADD COLUMN total INTEGER');
     }
-    if (!(await hasColumn(db, 'catalogue_sync_runs', 'media_type'))) {
+    if (!(hasColumn(columns, 'catalogue_sync_runs', 'media_type'))) {
       statements.push('ALTER TABLE catalogue_sync_runs ADD COLUMN media_type TEXT');
     }
     return statements;
   },
+];
+
+/**
+ * Which database each migration belongs to, in the same order as the list
+ * above. A length mismatch throws on open, so the two cannot drift apart
+ * silently.
+ */
+const MIGRATION_TARGETS = [
+  'user', // users, sessions
+  'user', // wrapped_prefs, templates
+  'user', // guess_progress
+  'user', // rate_limits
+  'user', // last_seen_at, email_verified_at, reset and verification tokens
+  'user', // bio, avatar
+  'user', // public templates
+  'user', // template likes
+  'catalogue', // media, media_id_map, media_search_tokens, media_genre_tokens
+  'user', // google oauth, oauth_states
+  'user', // library_entries, library_sync_state
+  'catalogue', // catalogue_sync_runs
+  'catalogue', // media_type and the browse indexes
+  'catalogue', // catalogue_cursors and the sync report columns
 ];
 
 function nowIso() {
@@ -330,7 +394,29 @@ function isLocalUrl(url) {
   return url === ':memory:' || url.startsWith('file:');
 }
 
-export async function openDatabase(url = process.env.DATABASE_URL || `file:${rootDir}/data/aniglobe.db`) {
+/**
+ * Open the two databases.
+ *
+ * `url` is the accounts database. The catalogue database comes from
+ * CATALOGUE_DATABASE_URL; when that is not set the same database is used for
+ * both, which keeps a single-database setup working unchanged.
+ */
+export async function openDatabase(
+  url = process.env.DATABASE_URL || `file:${rootDir}/data/aniglobe.db`,
+  catalogueUrl = process.env.CATALOGUE_DATABASE_URL || url
+) {
+  const db = await openClient(url);
+  const catalogueDb = catalogueUrl === url ? db : await openClient(catalogueUrl);
+
+  for (const [client, target] of [[db, 'user'], [catalogueDb, 'catalogue']]) {
+    await applyMigrations(client, target);
+  }
+
+  return { db, catalogueDb };
+}
+
+/** Open one client and point it at the right pragmas. */
+async function openClient(url) {
   if (isLocalUrl(url) && url !== ':memory:') {
     const path = url.slice('file:'.length);
     mkdirSync(dirname(path), { recursive: true });
@@ -339,37 +425,50 @@ export async function openDatabase(url = process.env.DATABASE_URL || `file:${roo
   const clientConfig = { url };
   const authToken = process.env.DATABASE_AUTH_TOKEN;
   if (authToken) clientConfig.authToken = authToken;
-  const db = createClient(clientConfig);
+  const client = createClient(clientConfig);
 
   if (isLocalUrl(url)) {
-    await db.execute('PRAGMA journal_mode = WAL');
-    await db.execute('PRAGMA foreign_keys = ON');
-    await db.execute('PRAGMA busy_timeout = 5000');
+    await client.execute('PRAGMA journal_mode = WAL');
+    await client.execute('PRAGMA foreign_keys = ON');
+    await client.execute('PRAGMA busy_timeout = 5000');
   }
 
-  await db.execute(`
+  return client;
+}
+
+/**
+ * Apply the migrations that belong to one database.
+ *
+ * Every migration is idempotent, so all of them run on every open. The
+ * bookkeeping used to be a row count, which drifts when two cold starts
+ * apply the same migration at once: the count runs ahead of the list and
+ * the migrations after it are never applied. Running them all costs one
+ * round trip and cannot be skipped.
+ */
+async function applyMigrations(client, target) {
+  if (MIGRATION_TARGETS.length !== MIGRATIONS.length) {
+    throw new Error('The migration list and the target list have drifted apart.');
+  }
+  await client.execute(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       applied_at TEXT NOT NULL
     )
   `);
 
-  // Every migration is idempotent, so all of them run on every open. The
-  // bookkeeping used to be a row count, which drifts when two cold starts
-  // apply the same migration at once: the count runs ahead of the list and
-  // the migrations after it are never applied. Running them all costs one
-  // round trip and cannot be skipped.
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const statements = [];
-    for (const migration of MIGRATIONS) {
-      const produced = await migration(db);
+    const columns = await tableColumns(client);
+    for (let index = 0; index < MIGRATIONS.length; index += 1) {
+      if (MIGRATION_TARGETS[index] !== target) continue;
+      const produced = await MIGRATIONS[index](client, columns);
       for (const statement of produced) {
         statements.push(typeof statement === 'string' ? { sql: statement, args: [] } : statement);
       }
     }
     statements.push({ sql: 'INSERT INTO schema_migrations (applied_at) VALUES (?)', args: [nowIso()] });
     try {
-      await db.batch(statements, 'write');
+      await client.batch(statements, 'write');
       break;
     } catch (error) {
       // The one remaining window is the hasColumn check-then-act race on
@@ -380,8 +479,6 @@ export async function openDatabase(url = process.env.DATABASE_URL || `file:${roo
       if (attempt === 1) throw error;
     }
   }
-
-  return db;
 }
 
 /**
@@ -1046,6 +1143,13 @@ export async function upsertLibraryEntry(db, userId, entry) {
   });
 }
 
+/**
+ * The user's own entries, without the title information.
+ *
+ * The titles live in the catalogue database, so they are fetched separately
+ * and merged in (see shapeLibraryEntry). Sorting by title or year therefore
+ * happens in the catalogue database, over the ids this returns.
+ */
 export async function listLibraryEntries(db, userId, { limit = null, offset = 0, status = null, sort = 'updated' } = {}) {
   const where = ['e.user_id = ?'];
   const args = [userId];
@@ -1053,37 +1157,23 @@ export async function listLibraryEntries(db, userId, { limit = null, offset = 0,
     where.push('e.status = ?');
     args.push(status);
   }
-  // SQLite sorts NULLs last on a DESC order, which is what the score and
-  // year sorts want (unrated titles at the bottom).
+  // SQLite sorts NULLs last on a DESC order, which is what the score order
+  // wants (unrated titles at the bottom).
   const order = {
     updated: 'e.updated_at DESC',
-    title: "LOWER(COALESCE(m.title_en, m.title_romaji, m.title_native, '')) ASC",
     status: 'e.status ASC',
     score: 'e.score DESC',
-    year: 'm.season_year DESC',
   }[sort] || 'e.updated_at DESC';
   const paging = limit == null ? '' : ' LIMIT ? OFFSET ?';
   if (limit != null) args.push(Number(limit), Number(offset));
   const rows = await getRows(db, `
-    SELECT e.*, m.title_en, m.title_romaji, m.title_native, m.cover_url, m.format,
-           m.episodes, m.chapters, m.volumes, m.season_year, m.average_rating, m.genres
-    FROM library_entries e JOIN media m ON m.id = e.media_id
+    SELECT e.* FROM library_entries e
     WHERE ${where.join(' AND ')}
     ORDER BY ${order}${paging}
   `, args);
   return rows.map((row) => ({
     id: row.id,
     mediaId: row.media_id,
-    title: row.title_en || row.title_romaji || row.title_native || 'Untitled',
-    titleRomaji: row.title_romaji,
-    coverUrl: row.cover_url,
-    format: row.format,
-    episodes: row.episodes,
-    chapters: row.chapters,
-    volumes: row.volumes,
-    year: row.season_year,
-    averageRating: row.average_rating,
-    genres: safeJsonArray(row.genres),
     status: row.status,
     progress: row.progress,
     score: row.score,
@@ -1095,6 +1185,24 @@ export async function listLibraryEntries(db, userId, { limit = null, offset = 0,
     source: row.source,
     updatedAt: row.updated_at,
   }));
+}
+
+/** Merge an entry with the title it points at. */
+export function shapeLibraryEntry(entry, media) {
+  const title = media || {};
+  return {
+    ...entry,
+    title: title.title || 'Untitled',
+    titleRomaji: title.titleRomaji || null,
+    coverUrl: title.coverUrl || null,
+    format: title.format || null,
+    episodes: title.episodes == null ? null : title.episodes,
+    chapters: title.chapters == null ? null : title.chapters,
+    volumes: title.volumes == null ? null : title.volumes,
+    year: title.year == null ? null : title.year,
+    averageRating: title.averageRating == null ? null : title.averageRating,
+    genres: title.genres || [],
+  };
 }
 
 export async function countLibraryEntries(db, userId, { status = null } = {}) {
@@ -1118,37 +1226,41 @@ export async function deleteLibraryEntry(db, userId, id) {
   return Number(result.rowsAffected || 0) > 0;
 }
 
-export async function libraryStats(db, userId) {
+export async function libraryStats(db, userId, titles = null) {
   const rows = await getRows(db, `
     SELECT e.status, COUNT(*) AS n FROM library_entries e WHERE e.user_id = ? GROUP BY e.status
   `, [userId]);
   const byStatus = {};
   for (const row of rows) byStatus[row.status] = Number(row.n);
-  const years = await getRows(db, `
-    SELECT m.season_year AS year, COUNT(*) AS n
-    FROM library_entries e JOIN media m ON m.id = e.media_id
-    WHERE e.user_id = ? AND m.season_year IS NOT NULL
-    GROUP BY m.season_year ORDER BY m.season_year DESC
-  `, [userId]);
-  const genres = await getRows(db, `
-    SELECT m.genres FROM library_entries e JOIN media m ON m.id = e.media_id WHERE e.user_id = ?
-  `, [userId]);
-  const genreCounts = new Map();
-  for (const row of genres) {
-    for (const genre of safeJsonArray(row.genres)) {
-      genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
+  // The title details (year, genres) live in the catalogue database, so they
+  // are counted there and merged in by the caller.
+  const topGenres = [];
+  const byYear = [];
+  // The title details (year, genres) live in the catalogue database, so they
+  // are counted here from the titles the caller fetched.
+  if (titles && typeof titles.get === 'function') {
+    const genreCounts = new Map();
+    const yearCounts = new Map();
+    for (const media of titles.values()) {
+      for (const genre of media.genres || []) {
+        genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
+      }
+      if (media.year != null) yearCounts.set(media.year, (yearCounts.get(media.year) || 0) + 1);
     }
+    topGenres.push(...[...genreCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([name, count]) => ({ name, count })));
+    byYear.push(...[...yearCounts.entries()]
+      .sort((a, b) => b[0] - a[0])
+      .map(([year, count]) => ({ year, count })));
   }
-  const topGenres = [...genreCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-    .map(([name, count]) => ({ name, count }));
   const total = Object.values(byStatus).reduce((sum, n) => sum + n, 0);
   return {
     total,
     byStatus,
     topGenres,
-    byYear: years.map((row) => ({ year: Number(row.year), count: Number(row.n) })),
+    byYear,
     completed: byStatus.COMPLETED || 0,
     watching: byStatus.CURRENT || 0,
     planned: byStatus.PLANNING || 0,

@@ -40,9 +40,10 @@ import {
   deleteLibraryEntry,
   libraryStats,
   listLibraryEntries,
+  shapeLibraryEntry,
   upsertLibraryEntry,
 } from './db.js';
-import { getSnapshotMedia, runCatalogueSync, searchSnapshot, browseMedia, browseFacets } from './catalogue-store.js';
+import { getSnapshotMedia, runCatalogueSync, searchSnapshot, browseMedia, browseFacets, getMediaByIds, sortEntriesByMedia } from './catalogue-store.js';
 import { googleEnabled, GOOGLE_PROVIDER, callbackUrl, googleAuthorizationUrl, exchangeGoogleCode } from './oauth.js';
 import { currentStreak, bestStreak } from '../../src/domain/streak.js';
 import {
@@ -181,7 +182,7 @@ async function destroySession(db, req, res) {
  * Build the API router. dependencies: { db, authLimiters } — split out so the
  * server entry and the tests construct the same routes the same way.
  */
-export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimiter, mailer = sendMail, oauth = null }) {
+export function createApiRouter({ db, catalogueDb = db, registerLimiter, loginLimiter, resetLimiter, mailer = sendMail, oauth = null }) {
 
   function mailVerifyToken(req, user, token) {
     const url = `${originOf(req)}#/verify?token=${encodeURIComponent(token)}`;
@@ -808,7 +809,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     const status = url.searchParams.get('status');
     const minScoreParam = url.searchParams.get('minScore');
     const minScore = minScoreParam === null || minScoreParam === '' ? null : Number(minScoreParam);
-    const page = await browseMedia(db, {
+    const page = await browseMedia(catalogueDb, {
       mediaType,
       query,
       genre: genre || null,
@@ -822,7 +823,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       limit,
       offset,
     });
-    const facets = await browseFacets(db, mediaType);
+    const facets = await browseFacets(catalogueDb, mediaType);
     json(res, 200, { ...page, facets, limit, offset });
   }
 
@@ -834,12 +835,12 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       json(res, 200, { results: [], source: 'snapshot' });
       return;
     }
-    const results = await searchSnapshot(db, query, { limit });
+    const results = await searchSnapshot(catalogueDb, query, { limit });
     json(res, 200, { results, source: 'snapshot' });
   }
 
   async function mediaDetail(req, res, id) {
-    const media = await getSnapshotMedia(db, Number(id));
+    const media = await getSnapshotMedia(catalogueDb, Number(id));
     if (!media) throw new HttpError(404, 'That title is not in the catalogue yet.');
     json(res, 200, { media });
   }
@@ -851,9 +852,23 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
     const status = normaliseStatusFilter(url.searchParams.get('status'));
     const sort = String(url.searchParams.get('sort') || 'updated');
-    const entries = await listLibraryEntries(db, user.id, { limit, offset, status, sort });
     const total = await countLibraryEntries(db, user.id, { status });
-    json(res, 200, { entries, total, limit, offset, stats: await libraryStats(db, user.id) });
+
+    // A sort by title or year needs the titles, which live in the catalogue
+    // database, so the whole list is brought over and sorted here. The other
+    // sorts are done in SQL and paged there.
+    const all = await listLibraryEntries(db, user.id, { status });
+    const allTitles = await getMediaByIds(catalogueDb, all.map((entry) => entry.mediaId));
+    let entries;
+    if (sort === 'title' || sort === 'year') {
+      entries = sortEntriesByMedia(all, allTitles, sort).slice(offset, offset + limit);
+    } else {
+      entries = await listLibraryEntries(db, user.id, { limit, offset, status, sort });
+    }
+    const titles = await getMediaByIds(catalogueDb, entries.map((entry) => entry.mediaId));
+    const merged = entries.map((entry) => shapeLibraryEntry(entry, titles.get(entry.mediaId)));
+    const stats = await libraryStats(db, user.id, allTitles);
+    json(res, 200, { entries: merged, total, limit, offset, stats });
   }
 
   async function libraryCreate(req, res) {
@@ -862,7 +877,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     const body = await readJsonBody(req);
     const mediaId = Number(body.mediaId);
     if (!Number.isInteger(mediaId)) throw new HttpError(400, 'mediaId is required.');
-    const media = await getMediaById(db, mediaId);
+    const media = await getMediaById(catalogueDb, mediaId);
     if (!media) throw new HttpError(404, 'That title is not in the catalogue yet.');
     const status = normaliseStatus(body.status);
     const progress = normaliseProgress(body.progress);
@@ -889,7 +904,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
     const existing = await getLibraryEntry(db, user.id, Number(id));
     if (!existing) throw new HttpError(404, 'That entry does not exist.');
     const body = await readJsonBody(req);
-    const media = await getMediaById(db, existing.media_id);
+    const media = await getMediaById(catalogueDb, existing.media_id);
     const status = body.status === undefined ? existing.status : normaliseStatus(body.status);
     const progress = body.progress === undefined ? existing.progress : normaliseProgress(body.progress);
     const score = body.score === undefined ? existing.score : normaliseScore(body.score);
@@ -920,10 +935,12 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   async function libraryExport(req, res) {
     const { user } = await requireSession(db, req);
     const entries = await listLibraryEntries(db, user.id);
+    const titles = await getMediaByIds(catalogueDb, entries.map((entry) => entry.mediaId));
+    const merged = entries.map((entry) => shapeLibraryEntry(entry, titles.get(entry.mediaId)));
     const format = String(new URL(req.url, 'http://placeholder').searchParams.get('format') || 'json');
     if (format === 'csv') {
       const header = 'title,type,status,progress,total,score,favourite,notes';
-      const lines = entries.map((entry) => [
+      const lines = merged.map((entry) => [
         csvCell(entry.title),
         entry.chapters != null ? 'manga' : 'anime',
         entry.status,
@@ -946,7 +963,7 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       'Content-Disposition': 'attachment; filename="aniglobe-library.json"',
       'Cache-Control': 'no-store',
     });
-    res.end(JSON.stringify({ exportedAt: new Date().toISOString(), entries }, null, 2));
+    res.end(JSON.stringify({ exportedAt: new Date().toISOString(), entries: merged }, null, 2));
   }
 
   function csvCell(value) {
@@ -965,16 +982,16 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
       throw new HttpError(401, 'Not authorised.');
     }
     const mediaType = url.searchParams.get('mediaType') === 'manga' ? 'manga' : 'anime';
-    const report = await runCatalogueSync(db, { mediaType });
+    const report = await runCatalogueSync(catalogueDb, { mediaType });
     json(res, report.error ? 502 : 200, report);
   }
 
   async function catalogueStatus(req, res) {
     const provider = catalogueProviderId();
-    const last = await getLastSyncRun(db, provider);
+    const last = await getLastSyncRun(catalogueDb, provider);
     const cursors = {
-      anime: await getCatalogueCursor(db, provider, 'anime', 'crawl'),
-      manga: await getCatalogueCursor(db, provider, 'manga', 'crawl'),
+      anime: await getCatalogueCursor(catalogueDb, provider, 'anime', 'crawl'),
+      manga: await getCatalogueCursor(catalogueDb, provider, 'manga', 'crawl'),
     };
     json(res, 200, {
       provider,

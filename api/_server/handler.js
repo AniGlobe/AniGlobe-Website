@@ -28,7 +28,7 @@ export function effectivePathname(req) {
   return url.pathname;
 }
 
-export function createRequestHandler({ db, api }) {
+export function createRequestHandler({ db, catalogueDb = db, api }) {
   return async function requestHandler(req, res) {
     try {
       const pathname = effectivePathname(req);
@@ -44,10 +44,12 @@ export function createRequestHandler({ db, api }) {
       if (pathname === '/api/health') {
         let dbOk = false;
         let schema = null;
+        let catalogueSchema = null;
         try {
           await db.execute('SELECT 1 AS ok');
           dbOk = true;
           schema = await migrationState(db);
+          catalogueSchema = await migrationState(catalogueDb);
         } catch {
           dbOk = false;
         }
@@ -59,6 +61,7 @@ export function createRequestHandler({ db, api }) {
           // deployment from a real failure. Vercel sets this per build.
           commit: process.env.VERCEL_GIT_COMMIT_SHA || null,
           schema,
+          catalogueSchema,
         });
         return;
       }

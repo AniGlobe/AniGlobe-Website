@@ -6,10 +6,13 @@
  * Configuration via environment variables:
  *   PORT            default 8080
  *   HOST            default 0.0.0.0
- *   DATABASE_URL    database URL (default: file:<root>/data/aniglobe.db;
+ *   DATABASE_URL    the accounts database (default: file:<root>/data/aniglobe.db;
  *                   use libsql://... + DATABASE_AUTH_TOKEN for Turso)
  *                   On Vercel, use a durable Turso URL — the default file
  *                   is ephemeral/per-instance.
+ *   CATALOGUE_DATABASE_URL
+ *                   the anime and manga catalogue database. When it is not
+ *                   set, the accounts database holds both.
  *   TRUST_PROXY     set to 1 behind a TLS-terminating proxy (Vercel) so
  *                   X-Forwarded-For/Host are trusted for client IPs and
  *                   reset/verify origins (https).
@@ -28,14 +31,15 @@ import { HttpError, sendHttpError } from './api/_server/http.js';
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
 
-const db = await openDatabase();
+const { db, catalogueDb } = await openDatabase();
 const api = createApiRouter({
   db,
+  catalogueDb,
   registerLimiter: createDbRateLimiter({ db, windowMs: 15 * 60 * 1000, max: 20 }),
   loginLimiter: createDbRateLimiter({ db, windowMs: 15 * 60 * 1000, max: 30 }),
   resetLimiter: createDbRateLimiter({ db, windowMs: 60 * 60 * 1000, max: 5 }),
 });
-const requestHandler = createRequestHandler({ db, api });
+const requestHandler = createRequestHandler({ db, catalogueDb, api });
 
 const server = createServer(async (req, res) => {
   try {
@@ -55,13 +59,18 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`AniGlobe listening at http://${HOST}:${PORT} (db: ${process.env.DATABASE_URL || '<root>/data/aniglobe.db'})`);
+  const accounts = process.env.DATABASE_URL || '<root>/data/aniglobe.db';
+  const catalogue = process.env.CATALOGUE_DATABASE_URL || accounts;
+  console.log(`AniGlobe listening at http://${HOST}:${PORT}`);
+  console.log(`  accounts:  ${accounts}`);
+  console.log(`  catalogue: ${catalogue}`);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
     server.close(() => {
       db.close();
+      if (catalogueDb !== db) catalogueDb.close();
       process.exit(0);
     });
   });
