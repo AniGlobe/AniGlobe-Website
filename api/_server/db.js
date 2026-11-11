@@ -459,8 +459,11 @@ export async function openDatabase(
   url = process.env.DATABASE_URL || `file:${rootDir}/data/aniglobe.db`,
   catalogueUrl = process.env.CATALOGUE_DATABASE_URL || url
 ) {
-  const db = await openClient(url);
-  const catalogueDb = catalogueUrl === url ? db : await openClient(catalogueUrl);
+  const db = await openClient(url, process.env.DATABASE_AUTH_TOKEN);
+  // A hosted database is authenticated with its own token, and the tokens
+  // are per database: the catalogue needs its own when it is a second one.
+  const catalogueToken = process.env.CATALOGUE_DATABASE_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN;
+  const catalogueDb = catalogueUrl === url ? db : await openClient(catalogueUrl, catalogueToken);
 
   for (const [client, target] of [[db, 'user'], [catalogueDb, 'catalogue']]) {
     await applyMigrations(client, target);
@@ -470,14 +473,13 @@ export async function openDatabase(
 }
 
 /** Open one client and point it at the right pragmas. */
-async function openClient(url) {
+async function openClient(url, authToken) {
   if (isLocalUrl(url) && url !== ':memory:') {
     const path = url.slice('file:'.length);
     mkdirSync(dirname(path), { recursive: true });
   }
 
   const clientConfig = { url };
-  const authToken = process.env.DATABASE_AUTH_TOKEN;
   if (authToken) clientConfig.authToken = authToken;
   const client = createClient(clientConfig);
 
