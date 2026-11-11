@@ -102,16 +102,21 @@ export async function runCatalogueSync(db, {
     const caughtUp = report.total !== null && report.cursor >= report.total;
     if (caughtUp && Date.now() < deadline) {
       report.mode = 'refresh';
-      const refreshCursor = await getCatalogueCursor(db, provider.id, mediaType, 'refresh');
-      const page = await client.listMedia({ mediaType, offset: refreshCursor, limit: provider.pageSize });
-      if (page.items.length) {
+      let refreshCursor = await getCatalogueCursor(db, provider.id, mediaType, 'refresh');
+      // The refresh walks as much of the listing as the budget allows, so a
+      // daily run keeps the whole catalogue fresh over a few months.
+      while (Date.now() < deadline) {
+        const page = await client.listMedia({ mediaType, offset: refreshCursor, limit: provider.pageSize });
+        if (!page.items.length) {
+          // The end of the listing: start the rotation again.
+          await setCatalogueCursor(db, provider.id, mediaType, 'refresh', 0);
+          break;
+        }
         await writeMediaPage(db, page.items, ttlMs);
         report.fetched += page.items.length;
         report.updated += page.items.length;
-        await setCatalogueCursor(db, provider.id, mediaType, 'refresh', refreshCursor + page.items.length);
-      } else {
-        // The end of the listing: start the rotation again.
-        await setCatalogueCursor(db, provider.id, mediaType, 'refresh', 0);
+        refreshCursor += page.items.length;
+        await setCatalogueCursor(db, provider.id, mediaType, 'refresh', refreshCursor);
       }
     }
 

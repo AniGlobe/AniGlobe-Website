@@ -53,7 +53,9 @@ export function ratePerMinute() {
 
 /** How long a snapshot row stays fresh before the writer refreshes it. */
 export function snapshotTtlMs() {
-  return Number(process.env.CATALOGUE_TTL_HOURS || 720) * 60 * 60 * 1000;
+  // Long enough that the refresh pass can walk the whole catalogue before
+  // anything goes stale: the refresh covers it in about three months.
+  return Number(process.env.CATALOGUE_TTL_HOURS || 2160) * 60 * 60 * 1000;
 }
 
 /** Rows fetched per sync run, so a crawl cannot monopolise the instance. */
