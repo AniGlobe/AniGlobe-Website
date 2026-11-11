@@ -39,9 +39,10 @@ export default async function apiHandler(req, res) {
     const requestHandler = await handler();
     await requestHandler(req, res);
   } catch (error) {
+    process.stderr.write(`[aniglobe-boot] ${error && error.stack ? error.stack : error}\n`);
     if (!res.headersSent) {
       res.writeHead(error.status || 503, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Service unavailable.' }));
+      res.end(JSON.stringify({ error: 'Service unavailable.', reason: String(error && error.message ? error.message : error).slice(0, 200) }));
     } else if (!res.writableEnded) {
       res.end();
     }

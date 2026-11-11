@@ -52,13 +52,28 @@ async function tableColumns(db) {
   const sql = tables
     .map((table) => `SELECT '${table}' AS tbl, name FROM pragma_table_info('${table}')`)
     .join(' UNION ALL ');
-  const rows = (await db.execute(sql)).rows;
-  const columns = new Map();
-  for (const row of rows) {
-    if (!columns.has(row.tbl)) columns.set(row.tbl, new Set());
-    columns.get(row.tbl).add(row.name);
+  try {
+    const rows = (await db.execute(sql)).rows;
+    const columns = new Map();
+    for (const row of rows) {
+      if (!columns.has(row.tbl)) columns.set(row.tbl, new Set());
+      columns.get(row.tbl).add(row.name);
+    }
+    return columns;
+  } catch {
+    // Not every SQLite build has the table-valued pragma functions, so fall
+    // back to asking about one table at a time.
+    const columns = new Map();
+    for (const table of tables) {
+      try {
+        const rows = (await db.execute(`PRAGMA table_info(${table})`)).rows;
+        columns.set(table, new Set(rows.map((row) => row.name)));
+      } catch {
+        columns.set(table, new Set());
+      }
+    }
+    return columns;
   }
-  return columns;
 }
 
 /** Whether a table already has a column, from the map above. */
