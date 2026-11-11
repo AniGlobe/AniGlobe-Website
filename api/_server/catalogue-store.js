@@ -9,6 +9,8 @@
 
 import {
   getMediaByProviderId,
+  getCatalogueCursor,
+  setCatalogueCursor,
   getSyncWatermark,
   listMediaIdsForSync,
   listStaleMedia,
@@ -16,9 +18,10 @@ import {
   recordSyncRun,
   tokeniseTitle,
   upsertMedia,
+  writeMediaBatch,
 } from './db.js';
 import { createCatalogueClient } from './catalogue.js';
-import { snapshotTtlMs, syncBatchSize } from './catalogue-config.js';
+import { snapshotTtlMs, syncBatchSize, syncBudgetSeconds } from './catalogue-config.js';
 
 function snapshotShape(media, ttlMs) {
   const titleForSearch = media.titleEn || media.titleRomaji || media.titleNative || '';
@@ -31,64 +34,83 @@ function snapshotShape(media, ttlMs) {
 }
 
 /**
- * One incremental sync run: fetch ids above the watermark, refresh expired
- * rows, write them into the snapshot. Returns a run report.
+ * One incremental sync run.
+ *
+ * The run has two phases and a wall clock:
+ *
+ *   crawl   walks the provider's listing forward from the stored cursor and
+ *           writes each page. The cursor is saved after every page, so a run
+ *           that is cut short (a serverless function has a hard timeout)
+ *           still leaves the next run somewhere to continue.
+ *   refresh walks the listing again to renew rows that went stale. It runs
+ *           only once the crawl has reached the end, and it rotates so every
+ *           page is refreshed over several runs.
+ *
+ * The run stops at whichever limit comes first: the row cap, the time
+ * budget, or the end of the listing.
  */
-export async function runCatalogueSync(db, { providerId, mediaType = 'anime', limit = syncBatchSize() } = {}) {
+export async function runCatalogueSync(db, {
+  providerId,
+  mediaType = 'anime',
+  limit = syncBatchSize(),
+  budgetSeconds = syncBudgetSeconds(),
+} = {}) {
   const client = createCatalogueClient({ providerId });
   const provider = client.provider;
   const ttlMs = snapshotTtlMs();
   const startedAt = new Date().toISOString();
-  const report = { provider: provider.id, startedAt, finishedAt: null, fetched: 0, updated: 0, skipped: 0, error: null };
+  const deadline = Date.now() + Math.max(5, budgetSeconds) * 1000;
+  const report = {
+    provider: provider.id,
+    mediaType,
+    startedAt,
+    finishedAt: null,
+    fetched: 0,
+    updated: 0,
+    skipped: 0,
+    error: null,
+    mode: 'crawl',
+    cursor: 0,
+    total: null,
+    more: false,
+  };
 
   try {
-    const watermark = await getSyncWatermark(db, provider.id, mediaType);
-    const fresh = await listMediaIdsForSync(db, provider.id, mediaType, watermark, limit);
-    const stale = await listStaleMedia(db, provider.id, mediaType, new Date().toISOString(), limit);
-    const seen = new Set();
-    const ids = [];
-    for (const id of [...fresh, ...stale]) {
-      if (seen.has(id)) continue;
-      seen.add(id);
-      ids.push(id);
-      if (ids.length >= limit) break;
+    let cursor = await getCatalogueCursor(db, provider.id, mediaType, 'crawl');
+    report.cursor = cursor;
+
+    // --- crawl: walk the listing forward, one page at a time -------------
+    while (report.fetched < limit && Date.now() < deadline) {
+      const page = await client.listMedia({ mediaType, offset: cursor, limit: provider.pageSize });
+      if (report.total === null) report.total = page.total;
+      if (!page.items.length) break;
+      await writeMediaPage(db, page.items, ttlMs);
+      report.fetched += page.items.length;
+      report.updated += page.items.length;
+      cursor += page.items.length;
+      await setCatalogueCursor(db, provider.id, mediaType, 'crawl', cursor);
+      report.cursor = cursor;
+      if (report.total && cursor >= report.total) break;
+      report.more = true;
     }
 
-    if (!ids.length) {
-      // Nothing new and nothing expired: make sure the catalogue exists at
-      // all by seeding the first page.
-      const page = await client.listMedia({ mediaType, offset: 0, limit: provider.pageSize });
-      for (const media of page.items) {
-        await writeMedia(db, media, ttlMs);
-        report.fetched += 1;
-        report.updated += 1;
+    // --- refresh: renew stale rows, but only once the crawl is done ------
+    const caughtUp = report.total !== null && report.cursor >= report.total;
+    if (caughtUp && Date.now() < deadline) {
+      report.mode = 'refresh';
+      const refreshCursor = await getCatalogueCursor(db, provider.id, mediaType, 'refresh');
+      const page = await client.listMedia({ mediaType, offset: refreshCursor, limit: provider.pageSize });
+      if (page.items.length) {
+        await writeMediaPage(db, page.items, ttlMs);
+        report.fetched += page.items.length;
+        report.updated += page.items.length;
+        await setCatalogueCursor(db, provider.id, mediaType, 'refresh', refreshCursor + page.items.length);
+      } else {
+        // The end of the listing: start the rotation again.
+        await setCatalogueCursor(db, provider.id, mediaType, 'refresh', 0);
       }
-      report.skipped = Math.max(0, page.total - report.fetched);
-      report.finishedAt = new Date().toISOString();
-      await recordSyncRun(db, report);
-      return report;
     }
 
-    for (const id of ids) {
-      try {
-        const media = await client.getMedia(id);
-        if (!media) {
-          report.skipped += 1;
-          continue;
-        }
-        await writeMedia(db, media, ttlMs);
-        report.fetched += 1;
-        report.updated += 1;
-      } catch (error) {
-        if (error && error.code === 'rate_limited') {
-          // Stop the run on a rate limit; the next run resumes from the
-          // watermark instead of hammering the provider.
-          report.error = 'rate_limited';
-          break;
-        }
-        report.skipped += 1;
-      }
-    }
     report.finishedAt = new Date().toISOString();
   } catch (error) {
     report.error = error && error.message ? String(error.message) : 'unknown error';
@@ -106,6 +128,21 @@ async function writeMedia(db, media, ttlMs) {
     ? media.genres.filter((genre) => typeof genre === 'string' && genre)
     : [];
   return upsertMedia(db, shape, tokens, genreTokens);
+}
+
+/** Write a whole provider page in two round trips. */
+async function writeMediaPage(db, page, ttlMs) {
+  const items = page.map((media) => {
+    const shape = snapshotShape(media, ttlMs);
+    return {
+      media: shape,
+      tokens: tokeniseTitle(media.titleEn || media.titleRomaji || media.titleNative),
+      genreTokens: Array.isArray(media.genres)
+        ? media.genres.filter((genre) => typeof genre === 'string' && genre)
+        : [],
+    };
+  });
+  return writeMediaBatch(db, items);
 }
 
 /**

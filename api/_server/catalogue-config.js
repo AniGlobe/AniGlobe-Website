@@ -48,17 +48,28 @@ export function catalogueProviderId() {
  * and a blocked IP is expensive to recover from.
  */
 export function ratePerMinute() {
-  return Number(process.env.CATALOGUE_RATE_PER_MINUTE || 20);
+  return Number(process.env.CATALOGUE_RATE_PER_MINUTE || 240);
 }
 
 /** How long a snapshot row stays fresh before the writer refreshes it. */
 export function snapshotTtlMs() {
-  return Number(process.env.CATALOGUE_TTL_HOURS || 24) * 60 * 60 * 1000;
+  return Number(process.env.CATALOGUE_TTL_HOURS || 720) * 60 * 60 * 1000;
 }
 
 /** Rows fetched per sync run, so a crawl cannot monopolise the instance. */
 export function syncBatchSize() {
-  return Number(process.env.CATALOGUE_SYNC_BATCH || 500);
+  return Number(process.env.CATALOGUE_SYNC_BATCH || 20000);
+}
+
+/**
+ * How long one sync run may take, in seconds.
+ *
+ * A serverless function has a hard wall clock (60 seconds on Vercel), so a
+ * run has to stop before the platform kills it. The run is resumable: the
+ * cursor it leaves behind is where the next run continues.
+ */
+export function syncBudgetSeconds() {
+  return Number(process.env.CATALOGUE_SYNC_BUDGET_SECONDS || 45);
 }
 
 /** Shared secret required by the snapshot trigger endpoint. */

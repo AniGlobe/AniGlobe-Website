@@ -34,6 +34,7 @@ import {
   getLastSyncRun,
   getLibraryEntry,
   getMediaById,
+  getCatalogueCursor,
   LIBRARY_STATUSES,
   countLibraryEntries,
   deleteLibraryEntry,
@@ -971,18 +972,28 @@ export function createApiRouter({ db, registerLimiter, loginLimiter, resetLimite
   async function catalogueStatus(req, res) {
     const provider = catalogueProviderId();
     const last = await getLastSyncRun(db, provider);
+    const cursors = {
+      anime: await getCatalogueCursor(db, provider, 'anime', 'crawl'),
+      manga: await getCatalogueCursor(db, provider, 'manga', 'crawl'),
+    };
     json(res, 200, {
       provider,
       last: last
         ? {
+            mediaType: last.media_type || null,
+            mode: last.mode || null,
             startedAt: last.started_at,
             finishedAt: last.finished_at,
             fetched: Number(last.fetched || 0),
             updated: Number(last.updated || 0),
             skipped: Number(last.skipped || 0),
+            cursor: Number(last.cursor || 0),
+            total: last.total == null ? null : Number(last.total),
             error: last.error || null,
           }
         : null,
+      // How far the catalogue has been filled, per media type.
+      crawled: cursors,
       // The clearance table travels with the status so an operator can see
       // which provider capabilities are allowed (task T023).
       clearance: clearanceSummary(),

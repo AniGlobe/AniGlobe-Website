@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { openDatabase, upsertMedia, tokeniseTitle, normaliseTitle } from '../api/_server/db.js';
+import { openDatabase, upsertMedia, tokeniseTitle, normaliseTitle, getCatalogueCursor, setCatalogueCursor } from '../api/_server/db.js';
 import { createApiRouter } from '../api/_server/api.js';
 import { searchSnapshot, shapeMedia } from '../api/_server/catalogue-store.js';
 import { requestCronSecret } from '../api/_server/catalogue-config.js';
@@ -326,6 +326,26 @@ test('catalogue sync trigger requires the cron secret', async () => {
   }
 });
 
+test('an upserted title keeps its id and replaces its tokens', async () => {
+  const { db, close } = await startTestServer();
+  try {
+    const first = await seedMedia(db, { providerId: 'anime:9', titleEn: 'Trigun' });
+    const again = await seedMedia(db, { providerId: 'anime:9', titleEn: 'Trigun', rating: 9 });
+    assert.equal(again, first, 'the same title keeps the same row');
+
+    // A title change must not leave the old tokens behind.
+    const renamed = await seedMedia(db, { providerId: 'anime:9', titleEn: 'Gun Frontier' });
+    assert.equal(renamed, first);
+    const byOldToken = await searchSnapshot(db, 'trigun');
+    assert.equal(byOldToken.length, 0, 'the old title token is gone');
+    const byNewToken = await searchSnapshot(db, 'frontier');
+    assert.equal(byNewToken.length, 1);
+    assert.equal(byNewToken[0].title, 'Gun Frontier');
+  } finally {
+    await close();
+  }
+});
+
 test('the sync trigger reads the secret from a header, a bearer token, or a query parameter', () => {
   const url = new URL('http://placeholder/api/catalogue/sync?secret=from-query');
   assert.equal(requestCronSecret({ headers: { 'x-cron-secret': 'from-header' } }, url), 'from-header');
@@ -335,6 +355,24 @@ test('the sync trigger reads the secret from a header, a bearer token, or a quer
   assert.equal(requestCronSecret({ headers: {} }, new URL('http://placeholder/api/catalogue/sync')), '');
   // A header wins over the query parameter when both are present.
   assert.equal(requestCronSecret({ headers: { 'x-cron-secret': 'from-header' } }, url), 'from-header');
+});
+
+test('the crawl cursor remembers where the next sync run continues', async () => {
+  const { db, close } = await startTestServer();
+  try {
+    assert.equal(await getCatalogueCursor(db, 'kitsu', 'anime', 'crawl'), 0);
+    await setCatalogueCursor(db, 'kitsu', 'anime', 'crawl', 720);
+    assert.equal(await getCatalogueCursor(db, 'kitsu', 'anime', 'crawl'), 720);
+    // The refresh cursor is tracked separately from the crawl cursor.
+    assert.equal(await getCatalogueCursor(db, 'kitsu', 'anime', 'refresh'), 0);
+    await setCatalogueCursor(db, 'kitsu', 'anime', 'refresh', 40);
+    assert.equal(await getCatalogueCursor(db, 'kitsu', 'anime', 'refresh'), 40);
+    assert.equal(await getCatalogueCursor(db, 'kitsu', 'anime', 'crawl'), 720);
+    // Each media type crawls on its own.
+    assert.equal(await getCatalogueCursor(db, 'kitsu', 'manga', 'crawl'), 0);
+  } finally {
+    await close();
+  }
 });
 
 test('media detail endpoint returns the snapshot row and 404s for unknown ids', async () => {

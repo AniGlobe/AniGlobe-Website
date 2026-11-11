@@ -275,6 +275,16 @@ const MIGRATIONS = [
         skipped INTEGER NOT NULL DEFAULT 0,
         error TEXT
       )`,
+      // Where the next sync run continues: the crawl walks the catalogue
+      // forward, the refresh walks it again to renew stale rows.
+      `CREATE TABLE IF NOT EXISTS catalogue_cursors (
+        provider TEXT NOT NULL,
+        media_type TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        cursor INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (provider, media_type, kind)
+      )`,
     ];
   },
   async (db) => {
@@ -291,6 +301,20 @@ const MIGRATIONS = [
     statements.push('CREATE INDEX IF NOT EXISTS media_format_idx ON media (media_type, format)');
     statements.push('CREATE INDEX IF NOT EXISTS media_status_idx ON media (media_type, media_status)');
     statements.push('CREATE INDEX IF NOT EXISTS media_season_idx ON media (media_type, season, season_year)');
+    // The sync report keeps the crawl position, so the operator can see how
+    // far the catalogue has been filled.
+    if (!(await hasColumn(db, 'catalogue_sync_runs', 'mode'))) {
+      statements.push('ALTER TABLE catalogue_sync_runs ADD COLUMN mode TEXT');
+    }
+    if (!(await hasColumn(db, 'catalogue_sync_runs', 'cursor'))) {
+      statements.push('ALTER TABLE catalogue_sync_runs ADD COLUMN cursor INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!(await hasColumn(db, 'catalogue_sync_runs', 'total'))) {
+      statements.push('ALTER TABLE catalogue_sync_runs ADD COLUMN total INTEGER');
+    }
+    if (!(await hasColumn(db, 'catalogue_sync_runs', 'media_type'))) {
+      statements.push('ALTER TABLE catalogue_sync_runs ADD COLUMN media_type TEXT');
+    }
     return statements;
   },
 ];
@@ -719,73 +743,162 @@ export async function getMediaById(db, id) {
 
 /**
  * Insert or refresh a snapshot row and its search tokens.
+ *
  * Tokens are replaced wholesale so a title change cannot leave stale rows.
+ * The writes are batched: one statement for the row, one for the id map,
+ * one for the title tokens and one for the genre tokens. A title carries
+ * around thirty genres, so writing them one by one made the crawl
+ * statement-bound rather than network-bound.
  */
 export async function upsertMedia(db, media, tokens, genreTokens = []) {
   const at = nowIso();
-  const existing = await getMediaByProviderId(db, media.provider, media.providerId);
-  if (existing) {
-    await runWrite(db, `
-      UPDATE media SET
-        title_en = ?, title_romaji = ?, title_native = ?, title_norm = ?,
-        format = ?, subtype = ?, episodes = ?, chapters = ?, volumes = ?,
-        media_status = ?, season = ?, season_year = ?, average_rating = ?,
-        popularity = ?, genres = ?, cover_url = ?, synopsis = ?, nsfw = ?,
-        media_type = ?, updated_at = ?, fetched_at = ?, expires_at = ?
-      WHERE id = ?
-    `, [
+  const values = [
+    media.provider, media.providerId,
+    media.titleEn, media.titleRomaji, media.titleNative, media.titleNorm,
+    media.format, media.subtype, media.episodes, media.chapters, media.volumes,
+    media.status, media.season, media.seasonYear, media.averageRating,
+    media.popularity, media.genres, media.coverUrl, media.synopsis,
+    media.nsfw ? 1 : 0, media.mediaType || null,
+    media.updatedAt || null, at, media.expiresAt || null,
+  ];
+
+  const result = await runWrite(
+    db,
+    `INSERT INTO media (
+       provider, provider_id,
+       title_en, title_romaji, title_native, title_norm,
+       format, subtype, episodes, chapters, volumes,
+       media_status, season, season_year, average_rating,
+       popularity, genres, cover_url, synopsis, nsfw, media_type,
+       updated_at, fetched_at, expires_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (provider, provider_id) DO UPDATE SET
+       title_en = excluded.title_en, title_romaji = excluded.title_romaji,
+       title_native = excluded.title_native, title_norm = excluded.title_norm,
+       format = excluded.format, subtype = excluded.subtype,
+       episodes = excluded.episodes, chapters = excluded.chapters,
+       volumes = excluded.volumes, media_status = excluded.media_status,
+       season = excluded.season, season_year = excluded.season_year,
+       average_rating = excluded.average_rating, popularity = excluded.popularity,
+       genres = excluded.genres, cover_url = excluded.cover_url,
+       synopsis = excluded.synopsis, nsfw = excluded.nsfw,
+       media_type = excluded.media_type, updated_at = excluded.updated_at,
+       fetched_at = excluded.fetched_at, expires_at = excluded.expires_at
+     RETURNING id`,
+    values
+  );
+
+  // An upsert that takes the update branch leaves lastInsertRowid pointing
+  // at some other row, so the id is read back rather than guessed.
+  const mediaId = Number(result.rows && result.rows[0] && result.rows[0].id ? result.rows[0].id : 0)
+    || await getMediaId(db, media.provider, media.providerId);
+
+  await runWrite(db, 'INSERT OR REPLACE INTO media_id_map (provider, provider_id, media_id) VALUES (?, ?, ?)', [media.provider, media.providerId, mediaId]);
+  await runWrite(db, 'DELETE FROM media_search_tokens WHERE media_id = ?', [mediaId]);
+  await runWrite(db, 'DELETE FROM media_genre_tokens WHERE media_id = ?', [mediaId]);
+  if (tokens.length) {
+    await runWrite(
+      db,
+      'INSERT OR IGNORE INTO media_search_tokens (token, media_id) VALUES ' + tokens.map(() => '(?, ?)').join(', '),
+      tokens.flatMap((token) => [token, mediaId])
+    );
+  }
+  if (genreTokens.length) {
+    await runWrite(
+      db,
+      'INSERT OR IGNORE INTO media_genre_tokens (genre, media_id) VALUES ' + genreTokens.map(() => '(?, ?)').join(', '),
+      genreTokens.flatMap((genre) => [genre, mediaId])
+    );
+  }
+  return mediaId;
+}
+
+/** The id of an existing snapshot row, by provider id. */
+async function getMediaId(db, provider, providerId) {
+  const row = await getRow(db, 'SELECT id FROM media WHERE provider = ? AND provider_id = ?', [provider, providerId]);
+  return Number(row && row.id ? row.id : 0);
+}
+
+/** The statement that inserts or refreshes one snapshot row. */
+function mediaUpsertStatement(media) {
+  const at = nowIso();
+  return {
+    sql: `INSERT INTO media (
+       provider, provider_id,
+       title_en, title_romaji, title_native, title_norm,
+       format, subtype, episodes, chapters, volumes,
+       media_status, season, season_year, average_rating,
+       popularity, genres, cover_url, synopsis, nsfw, media_type,
+       updated_at, fetched_at, expires_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (provider, provider_id) DO UPDATE SET
+       title_en = excluded.title_en, title_romaji = excluded.title_romaji,
+       title_native = excluded.title_native, title_norm = excluded.title_norm,
+       format = excluded.format, subtype = excluded.subtype,
+       episodes = excluded.episodes, chapters = excluded.chapters,
+       volumes = excluded.volumes, media_status = excluded.media_status,
+       season = excluded.season, season_year = excluded.season_year,
+       average_rating = excluded.average_rating, popularity = excluded.popularity,
+       genres = excluded.genres, cover_url = excluded.cover_url,
+       synopsis = excluded.synopsis, nsfw = excluded.nsfw,
+       media_type = excluded.media_type, updated_at = excluded.updated_at,
+       fetched_at = excluded.fetched_at, expires_at = excluded.expires_at
+     RETURNING id`,
+    args: [
+      media.provider, media.providerId,
       media.titleEn, media.titleRomaji, media.titleNative, media.titleNorm,
       media.format, media.subtype, media.episodes, media.chapters, media.volumes,
       media.status, media.season, media.seasonYear, media.averageRating,
       media.popularity, media.genres, media.coverUrl, media.synopsis,
       media.nsfw ? 1 : 0, media.mediaType || null,
       media.updatedAt || null, at, media.expiresAt || null,
-      existing.id,
-    ]);
-    await runWrite(db, 'DELETE FROM media_search_tokens WHERE media_id = ?', [existing.id]);
-    await runWrite(db, 'DELETE FROM media_genre_tokens WHERE media_id = ?', [existing.id]);
-    for (const token of tokens) {
-      await runWrite(db, 'INSERT OR IGNORE INTO media_search_tokens (token, media_id) VALUES (?, ?)', [token, existing.id]);
-    }
-    for (const genre of genreTokens) {
-      await runWrite(db, 'INSERT OR IGNORE INTO media_genre_tokens (genre, media_id) VALUES (?, ?)', [genre, existing.id]);
-    }
-    return existing.id;
-  }
-  const id = await insert(db, 'media', {
-    provider: media.provider,
-    provider_id: media.providerId,
-    title_en: media.titleEn,
-    title_romaji: media.titleRomaji,
-    title_native: media.titleNative,
-    title_norm: media.titleNorm,
-    format: media.format,
-    subtype: media.subtype,
-    episodes: media.episodes,
-    chapters: media.chapters,
-    volumes: media.volumes,
-    media_status: media.status,
-    season: media.season,
-    season_year: media.seasonYear,
-    average_rating: media.averageRating,
-    popularity: media.popularity,
-    genres: media.genres,
-    cover_url: media.coverUrl,
-    synopsis: media.synopsis,
-    nsfw: media.nsfw ? 1 : 0,
-    media_type: media.mediaType || null,
-    fetched_at: at,
-    updated_at: media.updatedAt || null,
-    expires_at: media.expiresAt || null,
+    ],
+  };
+}
+
+/**
+ * Write a whole page of titles in two round trips: one batch for the rows,
+ * one batch for the id map and the token tables.
+ *
+ * Writing a row at a time cost about thirty statements per title, which
+ * made the crawl statement-bound instead of network-bound. Returns the ids
+ * of the written rows, in the order they were given.
+ */
+export async function writeMediaBatch(db, items) {
+  if (!items.length) return [];
+  const upserts = items.map(({ media }) => mediaUpsertStatement(media));
+  const upsertResults = await db.batch(upserts, 'write');
+
+  const ids = upsertResults.map((result) => {
+    const row = result && result.rows && result.rows[0];
+    return Number(row && row.id ? row.id : 0);
   });
-  await runWrite(db, 'INSERT OR REPLACE INTO media_id_map (provider, provider_id, media_id) VALUES (?, ?, ?)', [media.provider, media.providerId, id]);
-  for (const token of tokens) {
-    await runWrite(db, 'INSERT OR IGNORE INTO media_search_tokens (token, media_id) VALUES (?, ?)', [token, id]);
-  }
-  for (const genre of genreTokens) {
-    await runWrite(db, 'INSERT OR IGNORE INTO media_genre_tokens (genre, media_id) VALUES (?, ?)', [genre, id]);
-  }
-  return id;
+
+  const statements = [];
+  items.forEach(({ media, tokens = [], genreTokens = [] }, index) => {
+    const mediaId = ids[index];
+    if (!mediaId) return;
+    statements.push({
+      sql: 'INSERT OR REPLACE INTO media_id_map (provider, provider_id, media_id) VALUES (?, ?, ?)',
+      args: [media.provider, media.providerId, mediaId],
+    });
+    statements.push({ sql: 'DELETE FROM media_search_tokens WHERE media_id = ?', args: [mediaId] });
+    statements.push({ sql: 'DELETE FROM media_genre_tokens WHERE media_id = ?', args: [mediaId] });
+    if (tokens.length) {
+      statements.push({
+        sql: 'INSERT OR IGNORE INTO media_search_tokens (token, media_id) VALUES ' + tokens.map(() => '(?, ?)').join(', '),
+        args: tokens.flatMap((token) => [token, mediaId]),
+      });
+    }
+    if (genreTokens.length) {
+      statements.push({
+        sql: 'INSERT OR IGNORE INTO media_genre_tokens (genre, media_id) VALUES ' + genreTokens.map(() => '(?, ?)').join(', '),
+        args: genreTokens.flatMap((genre) => [genre, mediaId]),
+      });
+    }
+  });
+  if (statements.length) await db.batch(statements, 'write');
+  return ids;
 }
 
 /** Snapshot rows for the writer: provider ids above the watermark, oldest first. */
@@ -820,17 +933,52 @@ export async function listStaleMedia(db, provider, mediaType, now, limit) {
 export async function recordSyncRun(db, run) {
   return insert(db, 'catalogue_sync_runs', {
     provider: run.provider,
+    media_type: run.mediaType || null,
     started_at: run.startedAt,
     finished_at: run.finishedAt || null,
     fetched: run.fetched || 0,
     updated: run.updated || 0,
     skipped: run.skipped || 0,
+    mode: run.mode || null,
+    cursor: run.cursor || 0,
+    total: run.total == null ? null : run.total,
     error: run.error || null,
   });
 }
 
-export async function getLastSyncRun(db, provider) {
-  return getRow(db, 'SELECT * FROM catalogue_sync_runs WHERE provider = ? ORDER BY id DESC LIMIT 1', [provider]);
+export async function getLastSyncRun(db, provider, mediaType = null) {
+  if (mediaType) {
+    const row = await getRow(
+      db,
+      'SELECT * FROM catalogue_sync_runs WHERE provider = ? AND media_type = ? ORDER BY id DESC LIMIT 1',
+      [provider, mediaType]
+    );
+    return row || null;
+  }
+  const row = await getRow(db, 'SELECT * FROM catalogue_sync_runs WHERE provider = ? ORDER BY id DESC LIMIT 1', [provider]);
+  return row || null;
+}
+
+/** Where a sync run should continue: the crawl offset, or the refresh offset. */
+export async function getCatalogueCursor(db, provider, mediaType, kind = 'crawl') {
+  const row = await getRow(
+    db,
+    'SELECT cursor FROM catalogue_cursors WHERE provider = ? AND media_type = ? AND kind = ?',
+    [provider, mediaType, kind]
+  );
+  return Number(row && row.cursor ? row.cursor : 0);
+}
+
+/** Remember where the next sync run continues. */
+export async function setCatalogueCursor(db, provider, mediaType, kind, value) {
+  await runWrite(
+    db,
+    `INSERT INTO catalogue_cursors (provider, media_type, kind, cursor, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (provider, media_type, kind) DO UPDATE SET cursor = excluded.cursor, updated_at = excluded.updated_at`,
+    [provider, mediaType, kind, Number(value) || 0, nowIso()]
+  );
+  return Number(value) || 0;
 }
 
 /* ------------------------------------------------------- library entries */
