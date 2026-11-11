@@ -354,30 +354,53 @@ export async function openDatabase(url = process.env.DATABASE_URL || `file:${roo
     )
   `);
 
-  const maxRow = (await db.execute('SELECT MAX(id) AS n FROM schema_migrations')).rows[0];
-  const applied = Number(maxRow && maxRow.n ? maxRow.n : 0);
-  for (let i = applied; i < MIGRATIONS.length; i += 1) {
-    // Idempotent per-statement DDL: concurrent cold starts may apply the
-    // same migration at the same time — both converge on the same schema.
-    // A duplicated schema_migrations row is harmless (MAX(id) just advances
-    // past the loop bound, which then no-ops).
-    //
-    // The one remaining window is the hasColumn check-then-act race on
-    // ALTER: the loser of that race gets a duplicate-column error AFTER the
-    // winner committed. Retry once with freshly derived statements — the
-    // re-check now sees the winner's column and skips the ALTER, and the
-    // IF NOT EXISTS creates no-op. That is deterministic, not luck.
-    const marker = { sql: 'INSERT INTO schema_migrations (applied_at) VALUES (?)', args: [nowIso()] };
+  // Every migration is idempotent, so all of them run on every open. The
+  // bookkeeping used to be a row count, which drifts when two cold starts
+  // apply the same migration at once: the count runs ahead of the list and
+  // the migrations after it are never applied. Running them all costs one
+  // round trip and cannot be skipped.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const statements = [];
+    for (const migration of MIGRATIONS) {
+      const produced = await migration(db);
+      for (const statement of produced) {
+        statements.push(typeof statement === 'string' ? { sql: statement, args: [] } : statement);
+      }
+    }
+    statements.push({ sql: 'INSERT INTO schema_migrations (applied_at) VALUES (?)', args: [nowIso()] });
     try {
-      const statements = await MIGRATIONS[i](db);
-      await db.batch([...statements, marker], 'write');
+      await db.batch(statements, 'write');
+      break;
     } catch (error) {
-      const statements = await MIGRATIONS[i](db);
-      await db.batch([...statements, marker], 'write');
+      // The one remaining window is the hasColumn check-then-act race on
+      // ALTER: the loser of that race gets a duplicate-column error AFTER the
+      // winner committed. Retry once with freshly derived statements: the
+      // re-check now sees the winner's column and skips the ALTER, and the
+      // IF NOT EXISTS creates no-op. That is deterministic, not luck.
+      if (attempt === 1) throw error;
     }
   }
 
   return db;
+}
+
+/**
+ * What the schema looks like right now, for the health endpoint. A
+ * deployment that is missing a table shows up here instead of as a
+ * mysterious 500 somewhere else.
+ */
+export async function migrationState(db) {
+  const rows = await getRows(db, "SELECT type, name FROM sqlite_master WHERE type IN ('table', 'index')");
+  const names = new Set(rows.map((row) => row.name));
+  const markers = await getRows(db, 'SELECT COUNT(*) AS n FROM schema_migrations');
+  return {
+    migrations: MIGRATIONS.length,
+    markers: Number(markers[0] && markers[0].n ? markers[0].n : 0),
+    hasCatalogueCursors: names.has('catalogue_cursors'),
+    hasCatalogueSyncRuns: names.has('catalogue_sync_runs'),
+    hasMedia: names.has('media'),
+    hasLibraryEntries: names.has('library_entries'),
+  };
 }
 
 async function getRow(db, sql, args) {

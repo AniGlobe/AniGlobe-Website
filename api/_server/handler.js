@@ -12,6 +12,7 @@
 
 import { json, HttpError, sendHttpError } from './http.js';
 import { securityHeaders } from './headers.js';
+import { migrationState } from './db.js';
 
 export function effectivePathname(req) {
   // On Vercel the request reaches the function through a rewrite, so the
@@ -42,9 +43,11 @@ export function createRequestHandler({ db, api }) {
 
       if (pathname === '/api/health') {
         let dbOk = false;
+        let schema = null;
         try {
           await db.execute('SELECT 1 AS ok');
           dbOk = true;
+          schema = await migrationState(db);
         } catch {
           dbOk = false;
         }
@@ -55,6 +58,7 @@ export function createRequestHandler({ db, api }) {
           // Which build is answering, so an operator can tell a stale
           // deployment from a real failure. Vercel sets this per build.
           commit: process.env.VERCEL_GIT_COMMIT_SHA || null,
+          schema,
         });
         return;
       }

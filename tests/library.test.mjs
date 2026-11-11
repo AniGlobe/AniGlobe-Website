@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { openDatabase, upsertMedia, tokeniseTitle, normaliseTitle, getCatalogueCursor, setCatalogueCursor } from '../api/_server/db.js';
+import { openDatabase, upsertMedia, tokeniseTitle, normaliseTitle, getCatalogueCursor, setCatalogueCursor, migrationState } from '../api/_server/db.js';
 import { createApiRouter } from '../api/_server/api.js';
 import { searchSnapshot, shapeMedia } from '../api/_server/catalogue-store.js';
 import { requestCronSecret } from '../api/_server/catalogue-config.js';
@@ -353,7 +353,6 @@ test('a new migration reaches a database that was created earlier', async () => 
   const db = await openDatabase(':memory:');
   await db.execute('DROP TABLE catalogue_cursors');
   await db.execute('ALTER TABLE catalogue_sync_runs DROP COLUMN mode');
-  await db.execute('DELETE FROM schema_migrations WHERE id = (SELECT MAX(id) FROM schema_migrations)');
   await db.close();
 
   const reopened = await openDatabase(':memory:');
@@ -363,6 +362,28 @@ test('a new migration reaches a database that was created earlier', async () => 
     const columns = await reopened.execute('PRAGMA table_info(catalogue_sync_runs)');
     assert.ok(columns.rows.some((row) => row.name === 'mode'), 'the sync report keeps its mode column');
     assert.ok(columns.rows.some((row) => row.name === 'cursor'), 'the sync report keeps its cursor column');
+  } finally {
+    await reopened.close();
+  }
+});
+
+test('the schema is applied even when the migration bookkeeping has drifted', async () => {
+  // Two cold starts applying the same migration leave two rows behind, and
+  // a row count would then run ahead of the migration list and skip the
+  // rest. Every migration is idempotent, so they all run instead.
+  const db = await openDatabase(':memory:');
+  await db.execute('DROP TABLE catalogue_cursors');
+  await db.execute("INSERT INTO schema_migrations (applied_at) VALUES ('2026-01-01T00:00:00.000Z')");
+  await db.execute("INSERT INTO schema_migrations (applied_at) VALUES ('2026-01-01T00:00:01.000Z')");
+  await db.close();
+
+  const reopened = await openDatabase(':memory:');
+  try {
+    const state = await migrationState(reopened);
+    assert.equal(state.hasCatalogueCursors, true, 'the missing table is created anyway');
+    assert.equal(state.hasCatalogueSyncRuns, true);
+    assert.equal(state.hasMedia, true);
+    assert.equal(state.hasLibraryEntries, true);
   } finally {
     await reopened.close();
   }
