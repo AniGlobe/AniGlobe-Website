@@ -803,6 +803,11 @@ export function createApiRouter({ db, catalogueDb = db, registerLimiter, loginLi
       .filter(Boolean)
       .slice(0, 8);
     const genre = url.searchParams.get('genre');
+    const tags = String(url.searchParams.get('tags') || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 12);
     const year = url.searchParams.get('year');
     const format = url.searchParams.get('format');
     const season = url.searchParams.get('season');
@@ -814,6 +819,7 @@ export function createApiRouter({ db, catalogueDb = db, registerLimiter, loginLi
       query,
       genre: genre || null,
       genres,
+      tags,
       format: format || null,
       year: year ? Number(year) : null,
       season: season || null,

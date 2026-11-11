@@ -31,6 +31,7 @@ function state() {
     type: 'anime',
     query: '',
     genres: [],
+    tags: [],
     year: '',
     format: '',
     season: '',
@@ -41,13 +42,31 @@ function state() {
   };
 }
 
+/** The filters a link can carry in: #/browse?genre=Action&tags=Isekai */
+function filtersFromHash() {
+  const hash = window.location.hash || '';
+  const query = hash.includes('?') ? hash.slice(hash.indexOf('?')) : '';
+  const params = new URLSearchParams(query);
+  const list = (name) => String(params.get(name) || '').split(',').map((value) => value.trim()).filter(Boolean);
+  return {
+    query: String(params.get('q') || '').trim(),
+    genres: list('genre').concat(list('genres')),
+    tags: list('tags'),
+    format: String(params.get('format') || ''),
+    year: String(params.get('year') || ''),
+    season: String(params.get('season') || ''),
+    status: String(params.get('status') || ''),
+  };
+}
+
 export default {
   id: 'browse',
   title: 'Browse',
   blurb: 'Search the anime and manga catalogue.',
 
   async mount(root) {
-    let filters = state();
+    let filters = Object.assign(state(), filtersFromHash());
+    let lastFacets = { genres: [], tags: [], years: [], formats: [], seasons: [], statuses: [] };
     let destroyed = false;
     let loading = false;
     let pending = false;
@@ -62,6 +81,17 @@ export default {
       'aria-label': 'Search titles',
     });
     const genreChips = el('div', { class: 'browse-genres', role: 'group', 'aria-label': 'Genres' });
+    const tagChips = el('div', { class: 'browse-genres', role: 'group', 'aria-label': 'Tags', hidden: true });
+    const chipSearch = el('input', {
+      type: 'search',
+      id: 'browse-chip-search',
+      placeholder: 'Find a genre or tag',
+      autocomplete: 'off',
+      'aria-label': 'Find a genre or tag',
+    });
+    const genreTab = el('button', { class: 'browse-chip-tab is-active', type: 'button', 'aria-pressed': 'true' }, 'Genres');
+    const tagTab = el('button', { class: 'browse-chip-tab', type: 'button', 'aria-pressed': 'false' }, 'Tags');
+    const chipEmpty = el('p', { class: 'browse-chip-empty', hidden: true }, 'Nothing matches that.');
     const yearSelect = el('select', { id: 'browse-year', 'aria-label': 'Year' });
     const formatSelect = el('select', { id: 'browse-format', 'aria-label': 'Format' });
     const seasonSelect = el('select', { id: 'browse-season', 'aria-label': 'Season' });
@@ -92,12 +122,17 @@ export default {
       el('div', { class: 'auth-dialog-head' },
         el('div', {},
           el('h2', { id: 'browse-advanced-title', class: 'auth-dialog-title' }, 'Advanced filters'),
-          el('p', { class: 'auth-dialog-subtitle' }, 'Pick as many genres as you like. Titles match any of them.')),
+          el('p', { class: 'auth-dialog-subtitle' }, 'Genres are the broad kinds. Tags are the finer details. Titles match any of the ones you pick.')),
         el('button', { class: 'auth-dialog-close', type: 'button', 'aria-label': 'Close advanced filters' }, '×')),
       el('div', { class: 'browse-advanced-body' },
-        el('div', { class: 'browse-advanced-block' },
-          el('span', { class: 'browse-label' }, 'Genres'),
-          genreChips),
+        el('div', { class: 'browse-chip-tabs', role: 'group', 'aria-label': 'Filter by' },
+          genreTab, tagTab),
+        el('div', { class: 'field browse-chip-search' },
+          el('label', { for: 'browse-chip-search' }, 'Find one'),
+          chipSearch),
+        el('div', { class: 'browse-advanced-block' }, genreChips),
+        el('div', { class: 'browse-advanced-block' }, tagChips),
+        chipEmpty,
         el('div', { class: 'field browse-advanced-score' },
           el('label', { for: 'browse-score' }, 'Minimum score'),
           scoreSelect),
@@ -116,8 +151,10 @@ export default {
     advancedDialog.querySelector('.auth-dialog-close').addEventListener('click', closeAdvanced);
     advancedDialog.querySelector('.browse-advanced-clear').addEventListener('click', () => {
       filters.genres = [];
+      filters.tags = [];
       filters.minScore = '';
       scoreSelect.value = '';
+      chipSearch.value = '';
       resetAndLoad();
     });
     advancedDialog.querySelector('.browse-advanced-done').addEventListener('click', closeAdvanced);
@@ -156,9 +193,11 @@ export default {
     }
 
     function paintGenres(facets) {
+      const needle = chipSearch.value.trim().toLowerCase();
+      const matches = (value) => !needle || value.toLowerCase().includes(needle);
       render(
         genreChips,
-        ...facets.genres.map((genre) => {
+        ...facets.genres.filter((genre) => matches(genre.value)).map((genre) => {
           const active = filters.genres.includes(genre.value);
           const chip = el(
             'button',
@@ -181,9 +220,37 @@ export default {
           return chip;
         })
       );
+      render(
+        tagChips,
+        ...facets.tags.filter((tag) => matches(tag.value)).map((tag) => {
+          const active = filters.tags.includes(tag.value);
+          const chip = el(
+            'button',
+            {
+              class: 'browse-chip' + (active ? ' is-active' : ''),
+              type: 'button',
+              'aria-pressed': String(active),
+              dataset: { tag: tag.value },
+            },
+            tag.value,
+            el('span', { class: 'browse-chip-count' }, String(tag.count))
+          );
+          chip.addEventListener('click', () => {
+            const index = filters.tags.indexOf(tag.value);
+            if (index >= 0) filters.tags.splice(index, 1);
+            else filters.tags.push(tag.value);
+            paintGenres(facets);
+            resetAndLoad();
+          });
+          return chip;
+        })
+      );
+      const nothing = !genreChips.children.length && !tagChips.children.length;
+      chipEmpty.hidden = !nothing;
     }
 
     function paintFacets(facets) {
+      lastFacets = facets;
       paintGenres(facets);
       render(
         yearSelect,
@@ -216,6 +283,7 @@ export default {
       const parts = [];
       if (filters.query) parts.push('“' + filters.query + '”');
       if (filters.genres.length) parts.push(filters.genres.join(' or '));
+      if (filters.tags.length) parts.push(filters.tags.join(' or '));
       if (filters.format) parts.push(filters.format);
       if (filters.season) parts.push(filters.season);
       if (filters.year) parts.push(filters.year);
@@ -225,7 +293,7 @@ export default {
       activeFilters.textContent = parts.length ? 'Filtering by ' + parts.join(' · ') : '';
       // The trigger carries the count of advanced picks so the popup is never
       // a hidden state.
-      const advancedPicks = filters.genres.length + (filters.minScore ? 1 : 0);
+      const advancedPicks = filters.genres.length + filters.tags.length + (filters.minScore ? 1 : 0);
       const badge = advancedButton.querySelector('.browse-trigger-count');
       badge.hidden = advancedPicks === 0;
       badge.textContent = String(advancedPicks);
@@ -253,83 +321,18 @@ export default {
       const card = el(
         'article',
         { class: 'browse-card' },
-        media.coverUrl
-          ? el('img', { class: 'browse-cover', src: media.coverUrl, alt: '', loading: 'lazy' })
-          : el('span', { class: 'browse-cover is-empty', 'aria-hidden': 'true' }),
-        el('h3', { class: 'browse-card-title' }, media.title),
-        el('p', { class: 'browse-card-meta' }, meta),
+        el(
+          'a',
+          { class: 'browse-card-link', href: '#/title/' + media.id },
+          media.coverUrl
+            ? el('img', { class: 'browse-cover', src: media.coverUrl, alt: '', loading: 'lazy' })
+            : el('span', { class: 'browse-cover is-empty', 'aria-hidden': 'true' }),
+          el('h3', { class: 'browse-card-title' }, media.title),
+          el('p', { class: 'browse-card-meta' }, meta)
+        ),
         add
       );
-      card.addEventListener('click', () => openMediaSheet(media));
       return card;
-    }
-
-    function openMediaSheet(media) {
-      const details = el('dl', { class: 'media-sheet-details' },
-        el('div', {}, el('dt', {}, 'Type'), el('dd', {}, media.mediaType || filters.type)),
-        el('div', {}, el('dt', {}, 'Format'), el('dd', {}, media.format || 'Not listed')),
-        el('div', {}, el('dt', {}, 'Status'), el('dd', {}, media.status || 'Unknown')),
-        el('div', {}, el('dt', {}, 'Episodes'), el('dd', {}, media.episodes != null ? String(media.episodes) : 'Not listed')),
-        el('div', {}, el('dt', {}, 'Chapters'), el('dd', {}, media.chapters != null ? String(media.chapters) : 'Not listed')),
-        el('div', {}, el('dt', {}, 'Year'), el('dd', {}, media.year != null ? String(media.year) : 'Unknown')),
-        el('div', {}, el('dt', {}, 'Rating'), el('dd', {}, media.averageRating != null ? media.averageRating + '/10' : 'Not rated'))
-      );
-      const genres = media.genres && media.genres.length
-        ? el('ul', { class: 'media-sheet-genres' }, ...media.genres.slice(0, 12).map((genre) => el('li', {}, genre)))
-        : null;
-      const addButton = el('button', { class: 'btn btn-primary', type: 'button' }, getSession() ? 'Add to my list' : 'Save to this browser');
-      addButton.addEventListener('click', async () => {
-        addButton.disabled = true;
-        try {
-          await saveEntry({ media, status: 'PLANNING', progress: 0 });
-          setStatus(status, 'Added "' + media.title + '" to your list.', 'info');
-          closeSheet();
-        } catch (error) {
-          setStatus(sheetStatus, error.message || 'Could not add that title.', 'error');
-          addButton.disabled = false;
-        }
-      });
-      const sheetStatus = el('div', { class: 'status', role: 'status', 'aria-live': 'polite' });
-      const dialog = el(
-        'dialog',
-        { class: 'auth-dialog media-sheet', 'aria-labelledby': 'media-sheet-title' },
-        el('div', { class: 'auth-dialog-head' },
-          el('div', {},
-            el('h2', { id: 'media-sheet-title', class: 'auth-dialog-title' }, media.title),
-            el('p', { class: 'auth-dialog-subtitle' }, [media.format, media.year].filter(Boolean).join(' · '))),
-          el('button', { class: 'auth-dialog-close', type: 'button', 'aria-label': 'Close details' }, '×')),
-        el('div', { class: 'media-sheet-body' },
-          media.coverUrl ? el('img', { class: 'media-sheet-cover', src: media.coverUrl, alt: '' }) : null,
-          el('div', {},
-            media.synopsis ? el('p', { class: 'media-sheet-synopsis' }, media.synopsis) : el('p', { class: 'media-sheet-synopsis' }, 'No synopsis yet.'),
-            details,
-            genres)),
-        sheetStatus,
-        el('div', { class: 'entry-editor-actions' }, addButton)
-      );
-      document.body.append(dialog);
-      // Closing removes the sheet outright, so nothing is left behind in the
-      // body when the browser skips the dialog close event.
-      function closeSheet() {
-        if (dialog.open) dialog.close();
-        dialog.remove();
-      }
-      dialog.querySelector('.auth-dialog-close').addEventListener('click', closeSheet);
-      dialog.addEventListener('click', (event) => {
-        if (event.target === dialog) closeSheet();
-      });
-      dialog.addEventListener('keydown', (event) => {
-        if (event.key !== 'Escape') return;
-        event.preventDefault();
-        closeSheet();
-      });
-      dialog.addEventListener('cancel', (event) => {
-        event.preventDefault();
-        closeSheet();
-      });
-      dialog.addEventListener('close', closeSheet);
-      dialog.showModal();
-      addButton.focus();
     }
 
     async function load() {
@@ -347,6 +350,7 @@ export default {
       params.set('offset', String(filters.offset));
       if (filters.query) params.set('q', filters.query);
       if (filters.genres.length) params.set('genres', filters.genres.join(','));
+      if (filters.tags.length) params.set('tags', filters.tags.join(','));
       if (filters.year) params.set('year', filters.year);
       if (filters.format) params.set('format', filters.format);
       if (filters.season) params.set('season', filters.season);
@@ -406,6 +410,7 @@ export default {
       if (!button) return;
       filters.type = button.dataset.type;
       filters.genres = [];
+      filters.tags = [];
       filters.year = '';
       filters.format = '';
       filters.season = '';
@@ -422,6 +427,23 @@ export default {
     statusSelect.addEventListener('change', () => { filters.status = statusSelect.value; resetAndLoad(); });
     scoreSelect.addEventListener('change', () => { filters.minScore = scoreSelect.value; resetAndLoad(); });
     sortSelect.addEventListener('change', () => { filters.sort = sortSelect.value; resetAndLoad(); });
+    // The popup shows the genres or the tags, never both at once: there are
+    // around two hundred tags and two dozen genres.
+    function showChipGroup(which) {
+      const showGenres = which === 'genres';
+      genreChips.hidden = !showGenres;
+      tagChips.hidden = showGenres;
+      genreTab.classList.toggle('is-active', showGenres);
+      tagTab.classList.toggle('is-active', !showGenres);
+      genreTab.setAttribute('aria-pressed', String(showGenres));
+      tagTab.setAttribute('aria-pressed', String(!showGenres));
+      chipSearch.placeholder = showGenres ? 'Find a genre' : 'Find a tag';
+    }
+    genreTab.addEventListener('click', () => showChipGroup('genres'));
+    tagTab.addEventListener('click', () => showChipGroup('tags'));
+    chipSearch.addEventListener('input', () => {
+      paintGenres(lastFacets);
+    });
     advancedButton.addEventListener('click', () => {
       advancedDialog.showModal();
       scoreSelect.focus();
@@ -432,6 +454,7 @@ export default {
       filters.type = keepType;
       searchInput.value = '';
       scoreSelect.value = '';
+      chipSearch.value = '';
       paintTypes();
       resetAndLoad();
     });

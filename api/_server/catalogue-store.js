@@ -32,6 +32,7 @@ function snapshotShape(media, ttlMs) {
     ...media,
     titleNorm: normaliseTitle(titleForSearch),
     genres: JSON.stringify(media.genres || []),
+    tags: JSON.stringify(media.tags || []),
     expiresAt: new Date(Date.now() + ttlMs).toISOString(),
   };
 }
@@ -150,7 +151,10 @@ async function writeMedia(db, media, ttlMs) {
   const genreTokens = Array.isArray(media.genres)
     ? media.genres.filter((genre) => typeof genre === 'string' && genre)
     : [];
-  return upsertMedia(db, shape, tokens, genreTokens);
+  const tagTokens = Array.isArray(media.tags)
+    ? media.tags.filter((tag) => typeof tag === 'string' && tag)
+    : [];
+  return upsertMedia(db, shape, tokens, genreTokens, tagTokens);
 }
 
 /** Write a whole provider page in two round trips. */
@@ -162,6 +166,9 @@ async function writeMediaPage(db, page, ttlMs) {
       tokens: tokeniseTitle(media.titleEn || media.titleRomaji || media.titleNative),
       genreTokens: Array.isArray(media.genres)
         ? media.genres.filter((genre) => typeof genre === 'string' && genre)
+        : [],
+      tagTokens: Array.isArray(media.tags)
+        ? media.tags.filter((tag) => typeof tag === 'string' && tag)
         : [],
     };
   });
@@ -179,6 +186,7 @@ export async function browseMedia(db, {
   query = '',
   genre = null,
   genres = [],
+  tags = [],
   format = null,
   year = null,
   season = null,
@@ -238,6 +246,18 @@ export async function browseMedia(db, {
       WHERE g.media_id = m.id AND g.genre IN (${genreList.map(() => '?').join(', ')})
     )`);
     args.push(...genreList);
+  }
+
+  // The fine-grained tags work the same way, and are kept apart from the
+  // genres: a title can have a genre and still be missing any of the tags
+  // the visitor picked.
+  const tagList = (Array.isArray(tags) ? tags : []).filter(Boolean);
+  if (tagList.length) {
+    where.push(`EXISTS (
+      SELECT 1 FROM media_tags t
+      WHERE t.media_id = m.id AND t.tag IN (${tagList.map(() => '?').join(', ')})
+    )`);
+    args.push(...tagList);
   }
 
   const order = {
@@ -314,6 +334,12 @@ export async function rebuildFacets(db) {
             FROM media_genre_tokens g JOIN media m ON m.id = g.media_id
             GROUP BY m.media_type, g.genre`,
     },
+    {
+      name: 'tag',
+      sql: `SELECT m.media_type, 'tag' AS dimension, t.tag AS value, COUNT(*) AS n
+            FROM media_tags t JOIN media m ON m.id = t.media_id
+            GROUP BY m.media_type, t.tag`,
+    },
   ];
 
   await db.execute('DELETE FROM catalogue_facets');
@@ -340,12 +366,13 @@ export async function browseFacets(db, mediaType = null) {
   );
   if (!cached.rows.length) return countFacetsFromSnapshot(db, mediaType);
 
-  const grouped = { formats: [], years: [], genres: [], seasons: [], statuses: [], total: 0 };
+  const grouped = { formats: [], years: [], genres: [], tags: [], seasons: [], statuses: [], total: 0 };
   for (const row of cached.rows) {
     const count = Number(row.count);
     if (row.dimension === 'format') grouped.formats.push({ value: row.value, count });
     else if (row.dimension === 'year') grouped.years.push({ value: Number(row.value), count });
     else if (row.dimension === 'genre') grouped.genres.push({ value: row.value, count });
+    else if (row.dimension === 'tag') grouped.tags.push({ value: row.value, count });
     else if (row.dimension === 'season') grouped.seasons.push({ value: row.value, count });
     else if (row.dimension === 'status') grouped.statuses.push({ value: row.value, count });
     else if (row.dimension === 'total') grouped.total = count;
@@ -353,6 +380,7 @@ export async function browseFacets(db, mediaType = null) {
   grouped.formats.sort((a, b) => b.count - a.count);
   grouped.years.sort((a, b) => b.value - a.value);
   grouped.genres.sort((a, b) => b.count - a.count);
+  grouped.tags.sort((a, b) => b.count - a.count);
   grouped.seasons.sort((a, b) => b.count - a.count);
   grouped.statuses.sort((a, b) => b.count - a.count);
   return grouped;
@@ -374,6 +402,10 @@ async function countFacetsFromSnapshot(db, mediaType) {
     `SELECT g.genre AS value, COUNT(*) AS n FROM media_genre_tokens g JOIN media m ON m.id = g.media_id ${mediaType ? 'WHERE m.media_type = ?' : ''} GROUP BY g.genre ORDER BY n DESC LIMIT 24`,
     typeArgs
   );
+  const tags = await db.execute(
+    `SELECT t.tag AS value, COUNT(*) AS n FROM media_tags t JOIN media m ON m.id = t.media_id ${mediaType ? 'WHERE m.media_type = ?' : ''} GROUP BY t.tag ORDER BY n DESC LIMIT 60`,
+    typeArgs
+  );
   const seasons = await db.execute(
     `SELECT season AS value, COUNT(*) AS n FROM media ${typeClause ? typeClause + ' AND' : 'WHERE'} season IS NOT NULL GROUP BY season ORDER BY n DESC`,
     typeArgs
@@ -387,6 +419,7 @@ async function countFacetsFromSnapshot(db, mediaType) {
     formats: formats.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
     years: years.rows.map((row) => ({ value: Number(row.value), count: Number(row.n) })),
     genres: genres.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
+    tags: tags.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
     seasons: seasons.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
     statuses: statuses.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
     total: Number(total.rows[0] ? total.rows[0].n : 0),
@@ -403,7 +436,7 @@ async function countFacetsFromSnapshot(db, mediaType) {
 export async function resetCatalogue(db) {
   const before = await db.execute('SELECT COUNT(*) AS n FROM media');
   const removed = Number(before.rows[0] ? before.rows[0].n : 0);
-  for (const table of ['media_genre_tokens', 'media_search_tokens', 'media_id_map', 'media', 'catalogue_cursors']) {
+  for (const table of ['media_genre_tokens', 'media_tags', 'media_search_tokens', 'media_id_map', 'media', 'catalogue_cursors']) {
     await db.execute(`DELETE FROM ${table}`);
   }
   return { removed };
@@ -493,11 +526,18 @@ export async function searchSnapshot(db, query, { limit = 24 } = {}) {
 
 export function shapeMedia(row) {
   let genres = [];
+  let tags = [];
   try {
     const parsed = JSON.parse(String(row.genres || '[]'));
     if (Array.isArray(parsed)) genres = parsed;
   } catch {
     genres = [];
+  }
+  try {
+    const parsed = JSON.parse(String(row.tags || '[]'));
+    if (Array.isArray(parsed)) tags = parsed;
+  } catch {
+    tags = [];
   }
   return {
     id: row.id,
@@ -518,6 +558,7 @@ export function shapeMedia(row) {
     averageRating: row.average_rating,
     popularity: row.popularity,
     genres,
+    tags,
     coverUrl: row.cover_url,
     synopsis: row.synopsis,
     nsfw: row.nsfw === 1,

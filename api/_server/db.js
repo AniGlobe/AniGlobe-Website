@@ -321,6 +321,23 @@ const MIGRATIONS = [
     ];
   },
   async (db, columns) => {
+    // The fine-grained tags the provider calls categories. They are not
+    // genres: a title has a handful of broad genres and dozens of tags.
+    const statements = [
+      `CREATE TABLE IF NOT EXISTS media_tags (
+        tag TEXT NOT NULL,
+        media_id INTEGER NOT NULL REFERENCES media (id) ON DELETE CASCADE,
+        PRIMARY KEY (tag, media_id)
+      )`,
+      'CREATE INDEX IF NOT EXISTS media_tags_tag_idx ON media_tags (tag)',
+      'CREATE INDEX IF NOT EXISTS media_tags_media_id_idx ON media_tags (media_id)',
+    ];
+    if (!hasColumn(columns, 'media', 'tags')) {
+      statements.push('ALTER TABLE media ADD COLUMN tags TEXT');
+    }
+    return statements;
+  },
+  async (db, columns) => {
     // The token tables are indexed by their text column, so clearing a
     // title's tokens by media_id had to scan the whole table. These indexes
     // make the delete a lookup, which is what the crawl spends its time on.
@@ -444,6 +461,7 @@ const MIGRATION_TARGETS = [
   'user', // google oauth, oauth_states
   'user', // library_entries, library_sync_state
   'catalogue', // the token lookups by media id
+  'catalogue', // the fine-grained tags
   'user', // the title copy each list entry keeps
   'catalogue', // catalogue_sync_runs
   'catalogue', // media_type and the browse indexes
@@ -940,14 +958,16 @@ export async function getMediaById(db, id) {
  * around thirty genres, so writing them one by one made the crawl
  * statement-bound rather than network-bound.
  */
-export async function upsertMedia(db, media, tokens, genreTokens = []) {
+export async function upsertMedia(db, media, tokens, genreTokens = [], tagTokens = []) {
   const at = nowIso();
   const values = [
     media.provider, media.providerId,
     media.titleEn, media.titleRomaji, media.titleNative, media.titleNorm,
     media.format, media.subtype, media.episodes, media.chapters, media.volumes,
     media.status, media.season, media.seasonYear, media.averageRating,
-    media.popularity, media.genres, media.coverUrl, media.synopsis,
+    media.popularity, media.genres == null ? null : media.genres,
+    media.tags == null ? null : media.tags,
+    media.coverUrl, media.synopsis,
     media.nsfw ? 1 : 0, media.mediaType || null,
     media.updatedAt || null, at, media.expiresAt || null,
   ];
@@ -959,9 +979,9 @@ export async function upsertMedia(db, media, tokens, genreTokens = []) {
        title_en, title_romaji, title_native, title_norm,
        format, subtype, episodes, chapters, volumes,
        media_status, season, season_year, average_rating,
-       popularity, genres, cover_url, synopsis, nsfw, media_type,
+       popularity, genres, tags, cover_url, synopsis, nsfw, media_type,
        updated_at, fetched_at, expires_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (provider, provider_id) DO UPDATE SET
        title_en = excluded.title_en, title_romaji = excluded.title_romaji,
        title_native = excluded.title_native, title_norm = excluded.title_norm,
@@ -970,7 +990,8 @@ export async function upsertMedia(db, media, tokens, genreTokens = []) {
        volumes = excluded.volumes, media_status = excluded.media_status,
        season = excluded.season, season_year = excluded.season_year,
        average_rating = excluded.average_rating, popularity = excluded.popularity,
-       genres = excluded.genres, cover_url = excluded.cover_url,
+       genres = excluded.genres, tags = excluded.tags,
+       cover_url = excluded.cover_url,
        synopsis = excluded.synopsis, nsfw = excluded.nsfw,
        media_type = excluded.media_type, updated_at = excluded.updated_at,
        fetched_at = excluded.fetched_at, expires_at = excluded.expires_at
@@ -986,6 +1007,7 @@ export async function upsertMedia(db, media, tokens, genreTokens = []) {
   await runWrite(db, 'INSERT OR REPLACE INTO media_id_map (provider, provider_id, media_id) VALUES (?, ?, ?)', [media.provider, media.providerId, mediaId]);
   await runWrite(db, 'DELETE FROM media_search_tokens WHERE media_id = ?', [mediaId]);
   await runWrite(db, 'DELETE FROM media_genre_tokens WHERE media_id = ?', [mediaId]);
+  await runWrite(db, 'DELETE FROM media_tags WHERE media_id = ?', [mediaId]);
   if (tokens.length) {
     await runWrite(
       db,
@@ -1018,9 +1040,9 @@ function mediaUpsertStatement(media) {
        title_en, title_romaji, title_native, title_norm,
        format, subtype, episodes, chapters, volumes,
        media_status, season, season_year, average_rating,
-       popularity, genres, cover_url, synopsis, nsfw, media_type,
+       popularity, genres, tags, cover_url, synopsis, nsfw, media_type,
        updated_at, fetched_at, expires_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (provider, provider_id) DO UPDATE SET
        title_en = excluded.title_en, title_romaji = excluded.title_romaji,
        title_native = excluded.title_native, title_norm = excluded.title_norm,
@@ -1029,7 +1051,8 @@ function mediaUpsertStatement(media) {
        volumes = excluded.volumes, media_status = excluded.media_status,
        season = excluded.season, season_year = excluded.season_year,
        average_rating = excluded.average_rating, popularity = excluded.popularity,
-       genres = excluded.genres, cover_url = excluded.cover_url,
+       genres = excluded.genres, tags = excluded.tags,
+       cover_url = excluded.cover_url,
        synopsis = excluded.synopsis, nsfw = excluded.nsfw,
        media_type = excluded.media_type, updated_at = excluded.updated_at,
        fetched_at = excluded.fetched_at, expires_at = excluded.expires_at
@@ -1039,7 +1062,9 @@ function mediaUpsertStatement(media) {
       media.titleEn, media.titleRomaji, media.titleNative, media.titleNorm,
       media.format, media.subtype, media.episodes, media.chapters, media.volumes,
       media.status, media.season, media.seasonYear, media.averageRating,
-      media.popularity, media.genres, media.coverUrl, media.synopsis,
+      media.popularity, media.genres == null ? null : media.genres,
+      media.tags == null ? null : media.tags,
+      media.coverUrl, media.synopsis,
       media.nsfw ? 1 : 0, media.mediaType || null,
       media.updatedAt || null, at, media.expiresAt || null,
     ],
@@ -1065,7 +1090,7 @@ export async function writeMediaBatch(db, items) {
   });
 
   const statements = [];
-  items.forEach(({ media, tokens = [], genreTokens = [] }, index) => {
+  items.forEach(({ media, tokens = [], genreTokens = [], tagTokens = [] }, index) => {
     const mediaId = ids[index];
     if (!mediaId) return;
     statements.push({
@@ -1074,6 +1099,7 @@ export async function writeMediaBatch(db, items) {
     });
     statements.push({ sql: 'DELETE FROM media_search_tokens WHERE media_id = ?', args: [mediaId] });
     statements.push({ sql: 'DELETE FROM media_genre_tokens WHERE media_id = ?', args: [mediaId] });
+    statements.push({ sql: 'DELETE FROM media_tags WHERE media_id = ?', args: [mediaId] });
     if (tokens.length) {
       statements.push({
         sql: 'INSERT OR IGNORE INTO media_search_tokens (token, media_id) VALUES ' + tokens.map(() => '(?, ?)').join(', '),
@@ -1084,6 +1110,12 @@ export async function writeMediaBatch(db, items) {
       statements.push({
         sql: 'INSERT OR IGNORE INTO media_genre_tokens (genre, media_id) VALUES ' + genreTokens.map(() => '(?, ?)').join(', '),
         args: genreTokens.flatMap((genre) => [genre, mediaId]),
+      });
+    }
+    if (tagTokens.length) {
+      statements.push({
+        sql: 'INSERT OR IGNORE INTO media_tags (tag, media_id) VALUES ' + tagTokens.map(() => '(?, ?)').join(', '),
+        args: tagTokens.flatMap((tag) => [tag, mediaId]),
       });
     }
   });

@@ -11,6 +11,7 @@ import { el, render } from './lib.js';
 import { getProfile, getSession, logout, onSessionChange, refreshSession } from './auth.js';
 import { renderReset, renderVerify } from './tools/auth-links.js';
 import { renderProfile } from './tools/profile-page.js';
+import { renderTitle } from './tools/title-page.js';
 import { renderAuthPage } from './tools/auth-page.js';
 import { renderHome } from './tools/home.js';
 import { renderToolsPage } from './tools/tools-page.js';
@@ -292,6 +293,15 @@ async function mountRoute() {
     render(dom.app);
     renderProfile(dom.app);
     document.title = 'Profile | ' + site.name;
+    dom.app.focus({ preventScroll: true });
+    return;
+  }
+  if (rawPath.startsWith('/title')) {
+    mountToken += 1;
+    runCleanup();
+    render(dom.app);
+    renderTitle(dom.app);
+    document.title = 'Title | ' + site.name;
     dom.app.focus({ preventScroll: true });
     return;
   }

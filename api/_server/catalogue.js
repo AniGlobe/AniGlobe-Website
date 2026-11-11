@@ -93,12 +93,22 @@ function firstTitle(titles) {
 
 function genreNames(included) {
   if (!Array.isArray(included)) return [];
-  // The provider exposes `genres` (a handful of broad genres, attribute
-  // `name`) and `categories` (dozens of fine-grained tags, attribute
-  // `title`). We store the broad genres only.
+  // The provider exposes `genres` (the broad genres, attribute `name`) and
+  // `categories` (the fine-grained tags). They are different things and are
+  // stored apart.
   const names = included
     .filter((item) => item && item.type === 'genres' && item.attributes && item.attributes.name)
     .map((item) => item.attributes.name);
+  return [...new Set(names)];
+}
+
+/** The fine-grained tags the provider calls categories. */
+function tagNames(included) {
+  if (!Array.isArray(included)) return [];
+  const names = included
+    .filter((item) => item && item.type === 'categories' && item.attributes)
+    .map((item) => item.attributes.name || item.attributes.title)
+    .filter(Boolean);
   return [...new Set(names)];
 }
 
@@ -151,6 +161,7 @@ export function normaliseMedia(resource, included, providerId, mediaType) {
     averageRating: ratingOutOfTen(attributes.averageRating),
     popularity: attributes.userCount != null ? Number(attributes.userCount) : null,
     genres: genreNames(included),
+    tags: tagNames(included),
     coverUrl,
     synopsis: attributes.synopsis || attributes.description || null,
     nsfw: attributes.nsfw === true,
@@ -184,7 +195,7 @@ export function createCatalogueClient({ providerId } = {}) {
         'page[limit]': limit,
         'page[offset]': offset,
         sort: 'id',
-        include: 'genres',
+        include: 'genres,categories',
       });
       const data = Array.isArray(payload.data) ? payload.data : [];
       const included = Array.isArray(payload.included) ? payload.included : [];
@@ -201,7 +212,7 @@ export function createCatalogueClient({ providerId } = {}) {
       const type = separator > 0 ? raw.slice(0, separator) : provider.mediaTypes[0];
       const id = separator > 0 ? raw.slice(separator + 1) : raw;
       const payload = await fetchPage('/' + type + '/' + encodeURIComponent(id), {
-        include: 'genres',
+        include: 'genres,categories',
       });
       if (!payload.data) return null;
       const included = Array.isArray(payload.included) ? payload.included : [];
@@ -214,7 +225,7 @@ export function createCatalogueClient({ providerId } = {}) {
       const payload = await fetchPage('/' + type, {
         'filter[text]': query,
         'page[limit]': limit,
-        include: 'genres',
+        include: 'genres,categories',
       });
       const data = Array.isArray(payload.data) ? payload.data : [];
       const included = Array.isArray(payload.included) ? payload.included : [];
