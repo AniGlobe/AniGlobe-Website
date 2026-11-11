@@ -364,12 +364,15 @@ export default {
         render(grid, ...items.map((media) => mediaCard(media)));
         emptyState.hidden = items.length > 0;
         const total = payload.total || 0;
+        // The count is capped so a browse never scans the whole catalogue;
+        // past the cap the page says there are more than it counted.
+        const more = payload.totalCapped ? '+' : '';
         resultCount.textContent = total
-          ? (filters.offset + 1) + '–' + Math.min(filters.offset + PAGE_SIZE, total) + ' of ' + total
+          ? (filters.offset + 1) + '–' + Math.min(filters.offset + PAGE_SIZE, total) + ' of ' + total + more
           : '0 titles';
         advancedCount.textContent = total === 1 ? '1 title matches' : total + ' titles match';
         previousButton.disabled = filters.offset <= 0;
-        nextButton.disabled = filters.offset + PAGE_SIZE >= total;
+        nextButton.disabled = !payload.totalCapped && filters.offset + PAGE_SIZE >= total;
         pager.hidden = total === 0;
       } catch (error) {
         if (destroyed) return;

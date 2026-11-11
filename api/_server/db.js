@@ -48,7 +48,7 @@ const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
  * request.
  */
 async function tableColumns(db) {
-  const tables = ['users', 'sessions', 'templates', 'media', 'catalogue_sync_runs'];
+  const tables = ['users', 'sessions', 'templates', 'media', 'catalogue_sync_runs', 'library_entries'];
   const sql = tables
     .map((table) => `SELECT '${table}' AS tbl, name FROM pragma_table_info('${table}')`)
     .join(' UNION ALL ');
@@ -305,6 +305,43 @@ const MIGRATIONS = [
       )`,
     ];
   },
+  async (db, columns) => {
+    // The catalogue is disposable: it can be wiped and crawled again. So a
+    // list entry keeps its own copy of the title, and the list still reads
+    // properly while the catalogue is being rebuilt.
+    const statements = [];
+    const copies = [
+      ['title', 'TEXT'],
+      ['cover_url', 'TEXT'],
+      ['format', 'TEXT'],
+      ['episodes', 'INTEGER'],
+      ['chapters', 'INTEGER'],
+      ['volumes', 'INTEGER'],
+      ['year', 'INTEGER'],
+      ['genres', 'TEXT'],
+    ];
+    for (const [name, type] of copies) {
+      if (!hasColumn(columns, 'library_entries', name)) {
+        statements.push(`ALTER TABLE library_entries ADD COLUMN ${name} ${type}`);
+      }
+    }
+    return statements;
+  },
+  async (db, columns) => {
+    // The facet counts, kept up to date by the writer. Asking the snapshot
+    // for them on every browse read the whole table on every page view,
+    // which is what the hosted database's row-read allowance cannot afford.
+    const statements = [
+      `CREATE TABLE IF NOT EXISTS catalogue_facets (
+        media_type TEXT NOT NULL,
+        dimension TEXT NOT NULL,
+        value TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (media_type, dimension, value)
+      )`,
+    ];
+    return statements;
+  },
   async (db) => {
     return [
       `CREATE TABLE IF NOT EXISTS catalogue_sync_runs (
@@ -381,9 +418,11 @@ const MIGRATION_TARGETS = [
   'catalogue', // media, media_id_map, media_search_tokens, media_genre_tokens
   'user', // google oauth, oauth_states
   'user', // library_entries, library_sync_state
+  'user', // the title copy each list entry keeps
   'catalogue', // catalogue_sync_runs
   'catalogue', // media_type and the browse indexes
   'catalogue', // catalogue_cursors and the sync report columns
+  'catalogue', // the cached facet counts
 ];
 
 function nowIso() {
@@ -1111,15 +1150,23 @@ export const LIBRARY_STATUSES = ['CURRENT', 'PLANNING', 'COMPLETED', 'DROPPED', 
 export async function upsertLibraryEntry(db, userId, entry) {
   const at = nowIso();
   const existing = await getRow(db, 'SELECT id FROM library_entries WHERE user_id = ? AND media_id = ?', [userId, entry.mediaId]);
+  const media = entry.media || null;
   if (existing) {
     await runWrite(db, `
       UPDATE library_entries SET
         status = ?, progress = ?, score = ?, notes = ?, favourite = ?,
-        rewatch_count = ?, started_at = ?, completed_at = ?, updated_at = ?
+        rewatch_count = ?, started_at = ?, completed_at = ?, updated_at = ?,
+        title = COALESCE(?, title), cover_url = COALESCE(?, cover_url),
+        format = COALESCE(?, format), episodes = COALESCE(?, episodes),
+        chapters = COALESCE(?, chapters), volumes = COALESCE(?, volumes),
+        year = COALESCE(?, year), genres = COALESCE(?, genres)
       WHERE id = ?
     `, [
       entry.status, entry.progress, entry.score, entry.notes, entry.favourite ? 1 : 0,
       entry.rewatchCount || 0, entry.startedAt || null, entry.completedAt || null, at,
+      media ? media.title : null, media ? media.coverUrl : null, media ? media.format : null,
+      media ? media.episodes : null, media ? media.chapters : null, media ? media.volumes : null,
+      media ? media.year : null, media ? JSON.stringify(media.genres || []) : null,
       existing.id,
     ]);
     return existing.id;
@@ -1138,6 +1185,14 @@ export async function upsertLibraryEntry(db, userId, entry) {
     source: entry.source || 'local',
     remote_entry_id: entry.remoteEntryId || null,
     sync_state: entry.syncState || null,
+    title: media ? media.title : null,
+    cover_url: media ? media.coverUrl : null,
+    format: media ? media.format : null,
+    episodes: media ? media.episodes : null,
+    chapters: media ? media.chapters : null,
+    volumes: media ? media.volumes : null,
+    year: media ? media.year : null,
+    genres: media ? JSON.stringify(media.genres || []) : null,
     created_at: at,
     updated_at: at,
   });
@@ -1184,24 +1239,53 @@ export async function listLibraryEntries(db, userId, { limit = null, offset = 0,
     completedAt: row.completed_at,
     source: row.source,
     updatedAt: row.updated_at,
+    // The copy the entry keeps of its title, used when the catalogue does
+    // not have that title (yet, or any more).
+    savedTitle: row.title,
+    savedCoverUrl: row.cover_url,
+    savedFormat: row.format,
+    savedEpisodes: row.episodes,
+    savedChapters: row.chapters,
+    savedVolumes: row.volumes,
+    savedYear: row.year,
+    savedGenres: safeJsonArray(row.genres),
   }));
 }
 
-/** Merge an entry with the title it points at. */
+/**
+ * Merge an entry with the title it points at.
+ *
+ * The catalogue database holds the live title; the entry holds a copy of it
+ * from when it was saved. The live one wins, and the copy keeps the list
+ * readable while the catalogue is being rebuilt.
+ */
 export function shapeLibraryEntry(entry, media) {
   const title = media || {};
+  const saved = entry.savedTitle ? entry : {};
+  const pick = (live, kept) => (live == null ? (kept == null ? null : kept) : live);
   return {
-    ...entry,
-    title: title.title || 'Untitled',
+    id: entry.id,
+    mediaId: entry.mediaId,
+    title: title.title || saved.savedTitle || 'Untitled',
     titleRomaji: title.titleRomaji || null,
-    coverUrl: title.coverUrl || null,
-    format: title.format || null,
-    episodes: title.episodes == null ? null : title.episodes,
-    chapters: title.chapters == null ? null : title.chapters,
-    volumes: title.volumes == null ? null : title.volumes,
-    year: title.year == null ? null : title.year,
+    coverUrl: pick(title.coverUrl, saved.savedCoverUrl),
+    format: pick(title.format, saved.savedFormat),
+    episodes: pick(title.episodes, saved.savedEpisodes),
+    chapters: pick(title.chapters, saved.savedChapters),
+    volumes: pick(title.volumes, saved.savedVolumes),
+    year: pick(title.year, saved.savedYear),
     averageRating: title.averageRating == null ? null : title.averageRating,
-    genres: title.genres || [],
+    genres: title.genres && title.genres.length ? title.genres : (saved.savedGenres || []),
+    status: entry.status,
+    progress: entry.progress,
+    score: entry.score,
+    notes: entry.notes,
+    favourite: entry.favourite,
+    rewatchCount: entry.rewatchCount,
+    startedAt: entry.startedAt,
+    completedAt: entry.completedAt,
+    source: entry.source,
+    updatedAt: entry.updatedAt,
   };
 }
 

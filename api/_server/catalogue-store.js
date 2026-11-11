@@ -23,6 +23,9 @@ import {
 import { createCatalogueClient } from './catalogue.js';
 import { snapshotTtlMs, syncBatchSize, syncBudgetSeconds } from './catalogue-config.js';
 
+/** How often the filter counts are rebuilt, in milliseconds. */
+const FACET_REBUILD_INTERVAL_MS = 10 * 60 * 1000;
+
 function snapshotShape(media, ttlMs) {
   const titleForSearch = media.titleEn || media.titleRomaji || media.titleNative || '';
   return {
@@ -118,7 +121,27 @@ export async function runCatalogueSync(db, {
   }
 
   await recordSyncRun(db, report);
+  // The filter menu is served from cached counts, so they have to be brought
+  // up to date after the catalogue changed. Rebuilding reads the snapshot
+  // once, so it is rate limited rather than done on every run.
+  if (report.fetched > 0) {
+    try {
+      await refreshFacets(db, provider.id, mediaType);
+    } catch (error) {
+      report.facetError = error && error.message ? String(error.message).slice(0, 120) : 'unknown error';
+    }
+  }
   return report;
+}
+
+/** Rebuild the facet counts, at most once every few minutes. */
+async function refreshFacets(db, provider, mediaType) {
+  const last = await getCatalogueCursor(db, provider, mediaType, 'facets');
+  const now = Date.now();
+  if (last && now - last < FACET_REBUILD_INTERVAL_MS) return false;
+  await rebuildFacets(db);
+  await setCatalogueCursor(db, provider, mediaType, 'facets', now);
+  return true;
 }
 
 async function writeMedia(db, media, ttlMs) {
@@ -164,6 +187,7 @@ export async function browseMedia(db, {
   sort = 'popularity',
   limit = 24,
   offset = 0,
+  countCap = 1000,
 } = {}) {
   const where = [];
   const args = [];
@@ -226,11 +250,16 @@ export async function browseMedia(db, {
 
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
+  // The count is capped: counting every matching row reads the whole
+  // filtered set, which is the one thing a browse must never do. Past the
+  // cap the answer is "more than the cap", and the page says so.
   const countRow = await db.execute(
-    `SELECT COUNT(*) AS n FROM media m ${clause}`,
-    args
+    `SELECT COUNT(*) AS n FROM (SELECT 1 FROM media m ${clause} LIMIT ?)`,
+    [...args, countCap + 1]
   );
-  const total = Number(countRow.rows[0] ? countRow.rows[0].n : 0);
+  const counted = Number(countRow.rows[0] ? countRow.rows[0].n : 0);
+  const totalCapped = counted > countCap;
+  const total = totalCapped ? countCap : counted;
 
   const rows = await db.execute(
     `SELECT m.* FROM media m ${clause} ORDER BY ${order} LIMIT ? OFFSET ?`,
@@ -239,12 +268,98 @@ export async function browseMedia(db, {
 
   return {
     total,
+    totalCapped,
     items: rows.rows.map((row) => shapeMedia(row)),
   };
 }
 
-/** Distinct values for the browse filters, from the snapshot itself. */
+/**
+ * Rebuild the facet counts.
+ *
+ * The counts are the browse page's filter menu. Asking the snapshot for
+ * them means a GROUP BY over every row, and the genre one scans the whole
+ * genre-token table: about two million rows read per page view. The counts
+ * are kept in a small table instead and rebuilt by the writer.
+ */
+export async function rebuildFacets(db) {
+  const dimensions = [
+    {
+      name: 'total',
+      sql: `SELECT media_type, 'total' AS dimension, '*' AS value, COUNT(*) AS n
+            FROM media GROUP BY media_type`,
+    },
+    {
+      name: 'format',
+      sql: `SELECT media_type, 'format' AS dimension, format AS value, COUNT(*) AS n
+            FROM media WHERE format IS NOT NULL GROUP BY media_type, format`,
+    },
+    {
+      name: 'year',
+      sql: `SELECT media_type, 'year' AS dimension, CAST(season_year AS TEXT) AS value, COUNT(*) AS n
+            FROM media WHERE season_year IS NOT NULL GROUP BY media_type, season_year`,
+    },
+    {
+      name: 'season',
+      sql: `SELECT media_type, 'season' AS dimension, season AS value, COUNT(*) AS n
+            FROM media WHERE season IS NOT NULL GROUP BY media_type, season`,
+    },
+    {
+      name: 'status',
+      sql: `SELECT media_type, 'status' AS dimension, media_status AS value, COUNT(*) AS n
+            FROM media WHERE media_status IS NOT NULL GROUP BY media_type, media_status`,
+    },
+    {
+      name: 'genre',
+      sql: `SELECT m.media_type, 'genre' AS dimension, g.genre AS value, COUNT(*) AS n
+            FROM media_genre_tokens g JOIN media m ON m.id = g.media_id
+            GROUP BY m.media_type, g.genre`,
+    },
+  ];
+
+  await db.execute('DELETE FROM catalogue_facets');
+  for (const dimension of dimensions) {
+    await db.execute(
+      `INSERT INTO catalogue_facets (media_type, dimension, value, count)
+       SELECT media_type, dimension, value, n FROM (${dimension.sql}) WHERE value IS NOT NULL`
+    );
+  }
+  const rows = await db.execute('SELECT COUNT(*) AS n FROM catalogue_facets');
+  return { facets: Number(rows.rows[0] ? rows.rows[0].n : 0) };
+}
+
+/**
+ * The browse filter menu, from the cached counts.
+ *
+ * Falls back to counting the snapshot when the cache is empty, which is
+ * only the case before the first rebuild.
+ */
 export async function browseFacets(db, mediaType = null) {
+  const cached = await db.execute(
+    'SELECT dimension, value, count FROM catalogue_facets WHERE media_type = ?',
+    [mediaType || 'anime']
+  );
+  if (!cached.rows.length) return countFacetsFromSnapshot(db, mediaType);
+
+  const grouped = { formats: [], years: [], genres: [], seasons: [], statuses: [], total: 0 };
+  for (const row of cached.rows) {
+    const count = Number(row.count);
+    if (row.dimension === 'format') grouped.formats.push({ value: row.value, count });
+    else if (row.dimension === 'year') grouped.years.push({ value: Number(row.value), count });
+    else if (row.dimension === 'genre') grouped.genres.push({ value: row.value, count });
+    else if (row.dimension === 'season') grouped.seasons.push({ value: row.value, count });
+    else if (row.dimension === 'status') grouped.statuses.push({ value: row.value, count });
+    else if (row.dimension === 'total') grouped.total = count;
+  }
+  grouped.formats.sort((a, b) => b.count - a.count);
+  grouped.years.sort((a, b) => b.value - a.value);
+  grouped.genres.sort((a, b) => b.count - a.count);
+  grouped.seasons.sort((a, b) => b.count - a.count);
+  grouped.statuses.sort((a, b) => b.count - a.count);
+  return grouped;
+}
+
+/** The same menu, counted straight from the snapshot. Slow, used rarely. */
+async function countFacetsFromSnapshot(db, mediaType) {
   const typeClause = mediaType ? 'WHERE media_type = ?' : '';
   const typeArgs = mediaType ? [mediaType] : [];
   const formats = await db.execute(
@@ -267,13 +382,31 @@ export async function browseFacets(db, mediaType = null) {
     `SELECT media_status AS value, COUNT(*) AS n FROM media ${typeClause ? typeClause + ' AND' : 'WHERE'} media_status IS NOT NULL GROUP BY media_status ORDER BY n DESC`,
     typeArgs
   );
+  const total = await db.execute(`SELECT COUNT(*) AS n FROM media ${typeClause}`, typeArgs);
   return {
     formats: formats.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
     years: years.rows.map((row) => ({ value: Number(row.value), count: Number(row.n) })),
     genres: genres.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
     seasons: seasons.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
     statuses: statuses.rows.map((row) => ({ value: row.value, count: Number(row.n) })),
+    total: Number(total.rows[0] ? total.rows[0].n : 0),
   };
+}
+
+/**
+ * Empty the catalogue.
+ *
+ * The snapshot is rebuildable: the crawl starts again from the first page
+ * and the titles come back. The accounts are not touched, and a list keeps
+ * reading because every entry carries its own copy of its title.
+ */
+export async function resetCatalogue(db) {
+  const before = await db.execute('SELECT COUNT(*) AS n FROM media');
+  const removed = Number(before.rows[0] ? before.rows[0].n : 0);
+  for (const table of ['media_genre_tokens', 'media_search_tokens', 'media_id_map', 'media', 'catalogue_cursors']) {
+    await db.execute(`DELETE FROM ${table}`);
+  }
+  return { removed };
 }
 
 /**

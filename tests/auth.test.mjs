@@ -42,10 +42,21 @@ async function startTestServer({ mail = null, oauth = null } = {}) {
   const port = server.address().port;
   return {
     db,
+    catalogueDb,
     server,
     base: `http://127.0.0.1:${port}`,
     outbox,
-    close: () => new Promise((resolve) => server.close(resolve)),
+    close: async () => {
+      await new Promise((resolve) => server.close(resolve));
+      // The database clients hold worker threads: leaving them open keeps
+      // the test process alive after the last test.
+      try {
+        await db.close();
+        if (catalogueDb !== db) await catalogueDb.close();
+      } catch {
+        // A client that is already closed is fine.
+      }
+    },
   };
 }
 

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { openDatabase, upsertMedia, tokeniseTitle, normaliseTitle, getCatalogueCursor, setCatalogueCursor, migrationState } from '../api/_server/db.js';
 import { createApiRouter } from '../api/_server/api.js';
-import { searchSnapshot, shapeMedia } from '../api/_server/catalogue-store.js';
+import { searchSnapshot, shapeMedia, resetCatalogue } from '../api/_server/catalogue-store.js';
 import { requestCronSecret } from '../api/_server/catalogue-config.js';
 import { clearanceFor, isCleared, requireClearance } from '../api/_server/provider-clearance.js';
 
@@ -42,7 +42,17 @@ async function startTestServer({ mail = null } = {}) {
     catalogueDb,
     outbox,
     base: `http://127.0.0.1:${port}`,
-    close: () => new Promise((resolve) => server.close(resolve)),
+    close: async () => {
+      await new Promise((resolve) => server.close(resolve));
+      // The database clients hold worker threads: leaving them open keeps
+      // the test process alive after the last test.
+      try {
+        await db.close();
+        if (catalogueDb !== db) await catalogueDb.close();
+      } catch {
+        // A client that is already closed is fine.
+      }
+    },
   };
 }
 
@@ -463,6 +473,43 @@ test('the accounts and the catalogue live in separate databases', async () => {
     } catch {
       // Windows may still hold the file handle for a moment.
     }
+  }
+});
+
+test('a list keeps its titles when the catalogue is wiped', async () => {
+  // The catalogue is rebuildable, so every entry carries its own copy of
+  // the title. Wiping the catalogue must not empty somebody's list.
+  const server = await startTestServer();
+  try {
+    const { catalogueDb, base } = server;
+    const mediaId = await seedMedia(catalogueDb, { providerId: 'anime:1', titleEn: 'Cowboy Bebop', episodes: 26, year: 1998 });
+    const client = makeClient(base);
+    await client.post('/api/auth/register', {
+      username: 'Keeper',
+      email: 'keeper@example.com',
+      password: GOOD_PASSWORD,
+    });
+    const created = await client.post('/api/library', { mediaId, status: 'CURRENT', progress: 3 });
+    assert.equal(created.status, 201);
+
+    const before = await client.get('/api/library');
+    assert.equal(before.json.entries[0].title, 'Cowboy Bebop');
+
+    // Empty the catalogue, the way an operator would to rebuild it.
+    const reset = await resetCatalogue(catalogueDb);
+    assert.equal(reset.removed, 1);
+
+    const browse = await client.get('/api/media/browse?type=anime');
+    assert.equal(browse.json.total, 0, 'the catalogue is empty');
+
+    const after = await client.get('/api/library');
+    assert.equal(after.status, 200);
+    assert.equal(after.json.entries.length, 1, 'the entry is still there');
+    assert.equal(after.json.entries[0].title, 'Cowboy Bebop', 'the title comes from the copy');
+    assert.equal(after.json.entries[0].episodes, 26);
+    assert.equal(after.json.entries[0].status, 'CURRENT');
+  } finally {
+    await server.close();
   }
 });
 

@@ -43,7 +43,7 @@ import {
   shapeLibraryEntry,
   upsertLibraryEntry,
 } from './db.js';
-import { getSnapshotMedia, runCatalogueSync, searchSnapshot, browseMedia, browseFacets, getMediaByIds, sortEntriesByMedia } from './catalogue-store.js';
+import { getSnapshotMedia, runCatalogueSync, searchSnapshot, browseMedia, browseFacets, getMediaByIds, sortEntriesByMedia, resetCatalogue, rebuildFacets } from './catalogue-store.js';
 import { googleEnabled, GOOGLE_PROVIDER, callbackUrl, googleAuthorizationUrl, exchangeGoogleCode } from './oauth.js';
 import { currentStreak, bestStreak } from '../../src/domain/streak.js';
 import {
@@ -877,7 +877,7 @@ export function createApiRouter({ db, catalogueDb = db, registerLimiter, loginLi
     const body = await readJsonBody(req);
     const mediaId = Number(body.mediaId);
     if (!Number.isInteger(mediaId)) throw new HttpError(400, 'mediaId is required.');
-    const media = await getMediaById(catalogueDb, mediaId);
+    const media = await getSnapshotMedia(catalogueDb, mediaId);
     if (!media) throw new HttpError(404, 'That title is not in the catalogue yet.');
     const status = normaliseStatus(body.status);
     const progress = normaliseProgress(body.progress);
@@ -894,6 +894,9 @@ export function createApiRouter({ db, catalogueDb = db, registerLimiter, loginLi
       startedAt: body.startedAt || null,
       completedAt: body.completedAt || null,
       source: 'local',
+      // The entry keeps its own copy of the title, so a list survives a
+      // catalogue rebuild.
+      media,
     });
     json(res, 201, { entry: { id } });
   }
@@ -904,7 +907,7 @@ export function createApiRouter({ db, catalogueDb = db, registerLimiter, loginLi
     const existing = await getLibraryEntry(db, user.id, Number(id));
     if (!existing) throw new HttpError(404, 'That entry does not exist.');
     const body = await readJsonBody(req);
-    const media = await getMediaById(catalogueDb, existing.media_id);
+    const media = await getSnapshotMedia(catalogueDb, existing.media_id);
     const status = body.status === undefined ? existing.status : normaliseStatus(body.status);
     const progress = body.progress === undefined ? existing.progress : normaliseProgress(body.progress);
     const score = body.score === undefined ? existing.score : normaliseScore(body.score);
@@ -920,6 +923,7 @@ export function createApiRouter({ db, catalogueDb = db, registerLimiter, loginLi
       startedAt: body.startedAt === undefined ? existing.started_at : body.startedAt,
       completedAt: body.completedAt === undefined ? existing.completed_at : body.completedAt,
       source: existing.source,
+      media,
     });
     json(res, 200, { ok: true });
   }
@@ -984,6 +988,36 @@ export function createApiRouter({ db, catalogueDb = db, registerLimiter, loginLi
     const mediaType = url.searchParams.get('mediaType') === 'manga' ? 'manga' : 'anime';
     const report = await runCatalogueSync(catalogueDb, { mediaType });
     json(res, report.error ? 502 : 200, report);
+  }
+
+  async function catalogueFacets(req, res) {
+    // Rebuilding the filter counts is a maintenance job: it reads the whole
+    // snapshot once, so it is never on the request path.
+    const secret = cronSecret();
+    const url = new URL(req.url, 'http://placeholder');
+    const provided = requestCronSecret(req, url);
+    if (!secret || provided !== secret) {
+      throw new HttpError(401, 'Not authorised.');
+    }
+    const result = await rebuildFacets(catalogueDb);
+    json(res, 200, { ok: true, ...result });
+  }
+
+  async function catalogueReset(req, res) {
+    // The same guard as the sync: only somebody with the secret may empty
+    // the catalogue. The accounts are never touched.
+    const secret = cronSecret();
+    const url = new URL(req.url, 'http://placeholder');
+    const provided = requestCronSecret(req, url);
+    if (!secret || provided !== secret) {
+      throw new HttpError(401, 'Not authorised.');
+    }
+    const result = await resetCatalogue(catalogueDb);
+    json(res, 200, {
+      ok: true,
+      removed: result.removed,
+      note: 'The catalogue is empty and the next sync crawls it again from the start. Lists keep their titles.',
+    });
   }
 
   async function catalogueStatus(req, res) {
@@ -1080,6 +1114,8 @@ export function createApiRouter({ db, catalogueDb = db, registerLimiter, loginLi
     ['/api/library/export', { GET: libraryExport }],
     ['/api/catalogue/status', { GET: catalogueStatus }],
     ['/api/catalogue/sync', { GET: catalogueSync, POST: catalogueSync }],
+    ['/api/catalogue/reset', { POST: catalogueReset }],
+    ['/api/catalogue/facets', { POST: catalogueFacets }],
     ['/api/sync/wrapped-prefs', { GET: wrappedPrefs, POST: wrappedPrefs }],
     ['/api/sync/guess', { GET: guess, POST: guess }],
   ]);
